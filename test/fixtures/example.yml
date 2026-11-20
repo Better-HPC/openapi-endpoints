@@ -1,0 +1,336 @@
+openapi: 3.0.3
+info:
+  title: Example API
+  version: 1.2.0
+paths:
+  /teams/:
+    get:
+      operationId: teams_list
+      summary: List teams.
+      description: Returns a paginated list of teams.
+      parameters:
+        - $ref: '#/components/parameters/Limit'
+        - name: _search
+          in: query
+          description: A search term.
+          schema:
+            type: string
+        - name: id__in
+          in: query
+          description: Multiple values may be separated by commas.
+          explode: false
+          style: form
+          schema:
+            type: array
+            items:
+              type: integer
+        - name: role
+          in: query
+          schema:
+            type: string
+            enum: [OW, AD, MB]
+      responses:
+        '200':
+          description: ''
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaginatedTeamList'
+    post:
+      operationId: teams_create
+      summary: Create a team.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TeamRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/TeamRequest'
+      responses:
+        '201':
+          description: ''
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Team'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+  /teams/{id}/:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        description: A unique integer value identifying this team.
+        schema:
+          type: integer
+    get:
+      operationId: teams_retrieve
+      summary: Retrieve a team.
+      responses:
+        '200':
+          description: ''
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Team'
+    patch:
+      operationId: teams_partial_update
+      summary: Partially update a team.
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PatchedTeamRequest'
+      responses:
+        '200':
+          description: ''
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Team'
+    delete:
+      operationId: teams_destroy
+      summary: Delete a team.
+      deprecated: true
+      responses:
+        '204':
+          description: No response body
+  /logout/:
+    post:
+      operationId: logout_create
+      summary: End the current session.
+      responses:
+        '200':
+          description: No response body
+  /version/:
+    get:
+      operationId: version_retrieve
+      summary: Retrieve the application version.
+      responses:
+        '200':
+          description: ''
+          content:
+            text/plain:
+              schema:
+                type: string
+  /batch/:
+    post:
+      operationId: batch_create
+      summary: Execute a batch job.
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/JobRequest'
+          application/json:
+            schema:
+              $ref: '#/components/schemas/JobRequest'
+      responses:
+        '200':
+          description: ''
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/JobResult'
+        '422':
+          description: ''
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/JobError'
+components:
+  parameters:
+    Limit:
+      name: _limit
+      in: query
+      description: Number of results to return per page.
+      schema:
+        type: integer
+  responses:
+    ValidationError:
+      description: The request failed validation.
+      content:
+        application/json:
+          schema:
+            type: object
+            additionalProperties:
+              type: array
+              items:
+                type: string
+  schemas:
+    JobError:
+      type: object
+      description: Details of a failed batch job.
+      properties:
+        detail:
+          type: string
+        step:
+          type: integer
+        body:
+          type: object
+          additionalProperties: {}
+      required:
+        - body
+        - detail
+        - step
+    JobRequest:
+      type: object
+      description: A batch job comprising one or more steps.
+      properties:
+        dry_run:
+          type: boolean
+          default: false
+        actions:
+          type: array
+          items:
+            type: object
+            properties:
+              method:
+                type: string
+                enum: [GET, POST, PUT, PATCH, DELETE]
+              path:
+                type: string
+                minLength: 1
+              payload:
+                type: object
+                additionalProperties: {}
+            required:
+              - method
+              - path
+      required:
+        - actions
+    JobResult:
+      type: object
+      properties:
+        results:
+          type: array
+          items:
+            type: object
+            properties:
+              status:
+                type: integer
+              body:
+                type: object
+                additionalProperties: {}
+            required:
+              - body
+              - status
+      required:
+        - results
+    PaginatedTeamList:
+      type: object
+      required:
+        - count
+        - next
+        - previous
+        - results
+      properties:
+        count:
+          type: integer
+          example: 123
+        next:
+          type: string
+          nullable: true
+          format: uri
+        previous:
+          type: string
+          nullable: true
+          format: uri
+        results:
+          type: array
+          items:
+            $ref: '#/components/schemas/Team'
+    PatchedTeamRequest:
+      type: object
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 255
+        is_active:
+          type: boolean
+          default: true
+    Team:
+      type: object
+      description: A group of users working together.
+      properties:
+        id:
+          type: integer
+          readOnly: true
+        name:
+          type: string
+          maxLength: 255
+        slug:
+          type: string
+          readOnly: true
+          pattern: ^[-a-zA-Z0-9_]+$
+        is_active:
+          type: boolean
+          default: true
+        _owner:
+          allOf:
+            - $ref: '#/components/schemas/UserSummary'
+          readOnly: true
+          nullable: true
+        _members:
+          type: array
+          items:
+            $ref: '#/components/schemas/UserSummary'
+          readOnly: true
+        settings: {}
+      required:
+        - _members
+        - _owner
+        - id
+        - is_active
+        - name
+        - settings
+        - slug
+    TeamRequest:
+      type: object
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 255
+        is_active:
+          type: boolean
+          default: true
+      required:
+        - name
+    UserSummary:
+      type: object
+      description: A summary of a user account.
+      properties:
+        id:
+          type: integer
+          readOnly: true
+        username:
+          type: string
+          maxLength: 150
+        email:
+          nullable: true
+          oneOf:
+            - type: string
+              format: email
+              maxLength: 254
+            - type: string
+              maxLength: 0
+        role:
+          type: string
+          enum: [OW, AD, MB]
+          x-spec-enum-id: 56df4cdb9958fe19
+          description: |-
+            * `OW` - Owner
+            * `AD` - Admin
+            * `MB` - Member
+        level:
+          type: integer
+          enum: [0, 1, 2]
+      required:
+        - id
+        - role
+        - username

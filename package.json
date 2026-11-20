@@ -1,0 +1,43 @@
+{
+  "name": "@better-hpc/openapi-endpoints",
+  "version": "0.1.0",
+  "description": "Generate TypeScript model types and a typed endpoint map from an OpenAPI document.",
+  "license": "GPL-3.0-or-later",
+  "type": "module",
+  "keywords": [
+    "openapi",
+    "typescript",
+    "codegen",
+    "drf-spectacular",
+    "types"
+  ],
+  "bin": {
+    "openapi-endpoints": "./dist/cli.js"
+  },
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "types": "./dist/index.d.ts",
+  "files": [
+    "dist"
+  ],
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "build": "tsc --project tsconfig.build.json",
+    "typecheck": "tsc --project tsconfig.json",
+    "test": "node --test \"test/**/*.test.ts\"",
+    "prepack": "npm run build"
+  },
+  "dependencies": {
+    "yaml": "^2.9.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "typescript": "^6.0.3"
+  }
+}

@@ -1,0 +1,30 @@
+name: 🤖 Publish Package
+
+on:
+  workflow_call:
+
+jobs:
+  publish-npm:
+    name: npm Package
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: 'lts/*'
+          registry-url: https://registry.npmjs.org
+
+      # Trusted publishing requires npm 11.5.1 or newer
+      - name: Update npm
+        run: npm install --global npm@latest
+
+      - name: Fetch build artifact
+        uses: actions/download-artifact@v8
+        with:
+          name: openapi-endpoints
+          path: package
+
+      # Scoped packages are private by default, so public access must be requested
+      - name: Publish package
+        run: npm publish package/*.tgz --access public
