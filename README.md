@@ -5,10 +5,15 @@ Generate TypeScript model types and a typed endpoint map from an OpenAPI documen
 `openapi-endpoints` reads an OpenAPI 3.0 or 3.1 document and writes a single TypeScript module containing:
 
 - **Model types**: one interface or type alias for every schema in `components.schemas`, named after the schema.
-- **An `Endpoints` map**: the path parameters, query parameters, JSON request body, and JSON responses of every operation, keyed by path and HTTP method.
+- **An `Endpoints` map**: the path parameters, query parameters, JSON request body, and JSON responses of every
+  operation, keyed by path and HTTP method.
 - **Helper types**: generic lookups such as `EndpointResponse<"/teams/", "get">` for building typed API clients.
 
-The generated module contains only type declarations, so it adds nothing to your compiled application. It is designed for documents produced by server-side schema generators such as [drf-spectacular](https://github.com/tfranzel/drf-spectacular), and it deliberately supports a focused subset of OpenAPI. Schema keywords that would change the meaning of a type but are not supported raise an error that points to the offending location, rather than silently producing incorrect types.
+The generated module contains only type declarations, so it adds nothing to your compiled application. It is designed
+for documents produced by server-side schema generators such
+as [drf-spectacular](https://github.com/tfranzel/drf-spectacular), and it deliberately supports a focused subset of
+OpenAPI. Schema keywords that would change the meaning of a type but are not supported raise an error that points to the
+offending location, rather than silently producing incorrect types.
 
 ## Installation
 
@@ -26,14 +31,15 @@ Pass the path or URL of an OpenAPI document in YAML or JSON:
 npx openapi-endpoints openapi.yml --output src/api.ts
 ```
 
-| Option                | Description                                                          |
-|-----------------------|----------------------------------------------------------------------|
-| `-o, --output <file>` | Write the generated module to a file instead of standard output.     |
-| `--check`             | Exit with an error if the output file is missing or out of date.     |
-| `-h, --help`          | Show the help message.                                               |
-| `-v, --version`       | Show the version number.                                             |
+| Option                | Description                                                      |
+|-----------------------|------------------------------------------------------------------|
+| `-o, --output <file>` | Write the generated module to a file instead of standard output. |
+| `--check`             | Exit with an error if the output file is missing or out of date. |
+| `-h, --help`          | Show the help message.                                           |
+| `-v, --version`       | Show the version number.                                         |
 
-The command exits with status `0` on success, `1` if the document cannot be converted or `--check` fails, and `2` for invalid arguments.
+The command exits with status `0` on success, `1` if the document cannot be converted or `--check` fails, and `2` for
+invalid arguments.
 
 A typical setup adds a script to `package.json`:
 
@@ -58,22 +64,22 @@ paths:
     get:
       summary: Retrieve a team.
       parameters:
-        - {name: id, in: path, required: true, schema: {type: integer}}
+        - { name: id, in: path, required: true, schema: { type: integer } }
       responses:
         '200':
           description: ''
           content:
             application/json:
-              schema: {$ref: '#/components/schemas/Team'}
+              schema: { $ref: '#/components/schemas/Team' }
 components:
   schemas:
     Team:
       type: object
       properties:
-        id: {type: integer, readOnly: true}
-        name: {type: string}
-        is_active: {type: boolean, default: true}
-      required: [id, name]
+        id: { type: integer, readOnly: true }
+        name: { type: string }
+        is_active: { type: boolean, default: true }
+      required: [ id, name ]
 ```
 
 `openapi-endpoints` generates:
@@ -104,38 +110,43 @@ export interface Endpoints {
 }
 ```
 
-followed by the helper types described below. A complete example is available in [`test/fixtures/example.ts`](test/fixtures/example.ts), generated from [`test/fixtures/example.yml`](test/fixtures/example.yml).
+followed by the helper types described below. A complete example is available in [
+`test/fixtures/example.ts`](test/fixtures/example.ts), generated from [
+`test/fixtures/example.yml`](test/fixtures/example.yml).
 
 ### The endpoint map
 
 Each operation in `Endpoints` has the same five properties:
 
-| Property    | Contents                                                                                                    |
-|-------------|-------------------------------------------------------------------------------------------------------------|
-| `path`      | Path parameters keyed by name, or `never` if the operation has none.                                        |
-| `query`     | Query parameters keyed by name, or `never` if the operation has none. Optional unless marked as required.   |
-| `body`      | The JSON request body, or `never` if the operation does not accept one.                                     |
-| `response`  | The union of all successful (`2xx`) response bodies, falling back to the `default` response.                |
-| `responses` | Every response body keyed by status, such as `200`, `"4XX"`, or `default`.                                  |
+| Property    | Contents                                                                                                  |
+|-------------|-----------------------------------------------------------------------------------------------------------|
+| `path`      | Path parameters keyed by name, or `never` if the operation has none.                                      |
+| `query`     | Query parameters keyed by name, or `never` if the operation has none. Optional unless marked as required. |
+| `body`      | The JSON request body, or `never` if the operation does not accept one.                                   |
+| `response`  | The union of all successful (`2xx`) response bodies, falling back to the `default` response.              |
+| `responses` | Every response body keyed by status, such as `200`, `"4XX"`, or `default`.                                |
 
-Response bodies are the JSON schema type, `void` for responses without content, and `unknown` for content types other than JSON. Path-level parameters are merged into each operation, and `$ref` values pointing to `components.parameters`, `components.requestBodies`, and `components.responses` are resolved. Header and cookie parameters are not included.
+Response bodies are the JSON schema type, `void` for responses without content, and `unknown` for content types other
+than JSON. Path-level parameters are merged into each operation, and `$ref` values pointing to `components.parameters`,
+`components.requestBodies`, and `components.responses` are resolved. Header and cookie parameters are not included.
 
 ### Helper types
 
-| Type                                    | Description                                                          |
-|-----------------------------------------|----------------------------------------------------------------------|
-| `HttpMethod`                            | Any HTTP method that can define an operation.                        |
-| `EndpointPath`                          | Any path in the endpoint map.                                        |
-| `EndpointMethod<P>`                     | The HTTP methods defined for path `P`.                               |
-| `EndpointPathsWith<M>`                  | The paths that define an operation for method `M`.                   |
-| `EndpointOperation<P, M>`               | The full operation entry for path `P` and method `M`.                |
-| `EndpointPathParams<P, M>`              | The `path` part of an operation.                                     |
-| `EndpointQueryParams<P, M>`             | The `query` part of an operation.                                    |
-| `EndpointRequestBody<P, M>`             | The `body` part of an operation.                                     |
-| `EndpointResponse<P, M>`                | The `response` part of an operation.                                 |
-| `EndpointStatusResponse<P, M, S>`       | The response body for status `S`, such as `422`.                     |
+| Type                              | Description                                           |
+|-----------------------------------|-------------------------------------------------------|
+| `HttpMethod`                      | Any HTTP method that can define an operation.         |
+| `EndpointPath`                    | Any path in the endpoint map.                         |
+| `EndpointMethod<P>`               | The HTTP methods defined for path `P`.                |
+| `EndpointPathsWith<M>`            | The paths that define an operation for method `M`.    |
+| `EndpointOperation<P, M>`         | The full operation entry for path `P` and method `M`. |
+| `EndpointPathParams<P, M>`        | The `path` part of an operation.                      |
+| `EndpointQueryParams<P, M>`       | The `query` part of an operation.                     |
+| `EndpointRequestBody<P, M>`       | The `body` part of an operation.                      |
+| `EndpointResponse<P, M>`          | The `response` part of an operation.                  |
+| `EndpointStatusResponse<P, M, S>` | The response body for status `S`, such as `422`.      |
 
-Every lookup resolves to `never` when the method is not defined for the path. Because they accept any `HttpMethod`, the helpers work in generic function signatures. For example, a minimal typed client built on `fetch`:
+Every lookup resolves to `never` when the method is not defined for the path. Because they accept any `HttpMethod`, the
+helpers work in generic function signatures. For example, a minimal typed client built on `fetch`:
 
 ```ts
 import type { EndpointPathParams, EndpointPathsWith, EndpointQueryParams, EndpointResponse } from "./api";
@@ -171,7 +182,9 @@ const team = await get("/teams/{id}/", {pathParams: {id: 1}});
 
 ### Model names
 
-Schemas keep their names when they are valid TypeScript identifiers. Other names are converted to PascalCase, so `pet-status` becomes `PetStatus`. Generation fails if two schemas convert to the same name, or if a schema uses a reserved word or the name of a generated declaration, such as `Endpoints` or `HttpMethod`.
+Schemas keep their names when they are valid TypeScript identifiers. Other names are converted to PascalCase, so
+`pet-status` becomes `PetStatus`. Generation fails if two schemas convert to the same name, or if a schema uses a
+reserved word or the name of a generated declaration, such as `Endpoints` or `HttpMethod`.
 
 To use a different name in your application, add an alias in your own code:
 
@@ -181,22 +194,25 @@ export type { RestrictedUser as User } from "./api";
 
 ## Supported schema features
 
-| Schema feature                                            | TypeScript output                                       |
-|-----------------------------------------------------------|---------------------------------------------------------|
-| `string`, `integer`, `number`, `boolean`, `null`          | `string`, `number`, `boolean`, `null`                   |
-| `array` with `items`                                      | `T[]`                                                   |
-| `object` with `properties` and `required`                 | Properties are optional unless listed in `required`     |
-| `object` without `properties`, or `additionalProperties`  | An index signature, such as `{ [key: string]: T }`      |
-| `enum` and `const`                                        | Literal unions, such as `"PD" \| "AP"`                  |
-| `nullable: true` and `type: [..., "null"]`                | `T \| null`                                             |
-| `allOf`                                                   | An intersection, or the single referenced type          |
-| `oneOf` and `anyOf`                                       | A union                                                 |
-| `$ref` to `#/components/schemas/<name>`                   | The model type name                                     |
-| Empty schemas and `true`                                  | `unknown`                                               |
+| Schema feature                                           | TypeScript output                                   |
+|----------------------------------------------------------|-----------------------------------------------------|
+| `string`, `integer`, `number`, `boolean`, `null`         | `string`, `number`, `boolean`, `null`               |
+| `array` with `items`                                     | `T[]`                                               |
+| `object` with `properties` and `required`                | Properties are optional unless listed in `required` |
+| `object` without `properties`, or `additionalProperties` | An index signature, such as `{ [key: string]: T }`  |
+| `enum` and `const`                                       | Literal unions, such as `"PD" \| "AP"`              |
+| `nullable: true` and `type: [..., "null"]`               | `T \| null`                                         |
+| `allOf`                                                  | An intersection, or the single referenced type      |
+| `oneOf` and `anyOf`                                      | A union                                             |
+| `$ref` to `#/components/schemas/<name>`                  | The model type name                                 |
+| Empty schemas and `true`                                 | `unknown`                                           |
 
-Default values do not make properties required. Annotation and validation keywords such as `description`, `format`, `pattern`, `maxLength`, `readOnly`, and `example` do not change the generated type, and `description`, `format`, `default`, and `deprecated` are copied into documentation comments. Vendor extensions starting with `x-` are ignored.
+Default values do not make properties required. Annotation and validation keywords such as `description`, `format`,
+`pattern`, `maxLength`, `readOnly`, and `example` do not change the generated type, and `description`, `format`,
+`default`, and `deprecated` are copied into documentation comments. Vendor extensions starting with `x-` are ignored.
 
-The following raise an error: keywords such as `not`, `if`, and `patternProperties`, tuple schemas, references to other files, and path item references. Swagger 2.0 documents are not supported.
+The following raise an error: keywords such as `not`, `if`, and `patternProperties`, tuple schemas, references to other
+files, and path item references. Swagger 2.0 documents are not supported.
 
 ## Programmatic use
 
@@ -208,7 +224,8 @@ const document = parseDocument(await readFile("openapi.yml", "utf8"));
 await writeFile("src/api.ts", generate(document, {source: "openapi.yml"}));
 ```
 
-`parseDocument` and `generate` throw a `GenerationError` when a document cannot be converted. Its `pointer` property contains a JSON pointer to the location of the problem.
+`parseDocument` and `generate` throw a `GenerationError` when a document cannot be converted. Its `pointer` property
+contains a JSON pointer to the location of the problem.
 
 ## Development
 
@@ -221,7 +238,9 @@ npm run typecheck  # Type check the sources and tests
 npm run build      # Compile the package into dist/
 ```
 
-The test suite compares the module generated from `test/fixtures/example.yml` with the reviewed output in `test/fixtures/example.ts`. After an intentional change to the generated output, update the fixture and review the difference:
+The test suite compares the module generated from `test/fixtures/example.yml` with the reviewed output in
+`test/fixtures/example.ts`. After an intentional change to the generated output, update the fixture and review the
+difference:
 
 ```bash
 UPDATE_FIXTURES=1 npm test
@@ -230,4 +249,5 @@ git diff test/fixtures/example.ts
 
 ## License
 
-`openapi-endpoints` is free software, released under the GNU General Public License version 3 or (at your option) any later version. See [`LICENSE`](LICENSE) for the full license text.
+`openapi-endpoints` is free software, released under the GNU General Public License version 3.
+See [`LICENSE`](LICENSE) for the full license text.
