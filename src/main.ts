@@ -1,12 +1,10 @@
 /**
  * Top level pipeline for generating TypeScript definitions from an OpenAPI document.
  *
- * The `main` function runs every stage of the generator in order, and each stage lives
- * in its own module, so the call order doubles as a map of the codebase. Arguments are
- * parsed, the document is read and validated, schemas are assigned type names, models
- * and endpoints are converted into type nodes, the nodes are printed as a TypeScript
- * module, and the module is either written out or compared with an existing file.
- * Stages report problems by throwing, and every exit code is decided here.
+ * The `main` function defines the top level application logic and is responsible for
+ * executing application steps in order. The logic behind each step is abstracted into
+ * submodules which report problems by throwing errors. The outputs and errors of each
+ * step are handled here to determine the final exit code.
  */
 
 import { parseArguments, printUsage, printVersion } from "./arguments.ts";
@@ -22,7 +20,7 @@ import { readSource } from "./source.ts";
 /** Exit code for a successful run. */
 const EXIT_SUCCESS = 0;
 
-/** Exit code for a failed run, including an output file that is out of date. */
+/** Exit code for a failed run (including a failed schema check). */
 const EXIT_FAILURE = 1;
 
 /** Exit code for invalid command line arguments. */
