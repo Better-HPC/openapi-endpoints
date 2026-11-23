@@ -7,39 +7,21 @@ Generate TypeScript models and a typed endpoint map from an OpenAPI document.
 - **Model types**: one interface or type alias for every schema in `components.schemas`, named after the schema.
 - **An `Endpoints` map**: the path parameters, query parameters, JSON request body, and JSON responses of every
   operation, keyed by path and HTTP method.
-- **Helper types**: generic lookups such as `EndpointResponse<"/teams/", "get">` for building typed API clients.
+- **Helper types**: generic lookups such as `EndpointResponse<"/path/", "get">` for building typed API clients.
 
-The generated module contains only type declarations, so it adds nothing to your compiled application.
-Schema keywords that would change the meaning of a type but are not supported raise an error that points to the
-offending location, rather than silently producing incorrect types.
+The generated module only contains type declarations, so it adds nothing to your compiled application.
+This provides a lighter weight alternative to full API client generators ideally suited for developers
+looking to implement their own API interface or minimize their footprint.
 
 ## Installation
 
-Node.js 22 or newer is required.
+The `openapi-endpoints` package can be installed using the standard npm commands.
 
 ```bash
 npm install --save-dev @better-hpc/openapi-endpoints
 ```
 
-## Usage
-
-Pass the path or URL of an OpenAPI document in YAML or JSON:
-
-```bash
-npx openapi-endpoints openapi.yml --output src/api.ts
-```
-
-| Option                | Description                                                      |
-|-----------------------|------------------------------------------------------------------|
-| `-o, --output <file>` | Write the generated module to a file instead of standard output. |
-| `--check`             | Exit with an error if the output file is missing or out of date. |
-| `-h, --help`          | Show the help message.                                           |
-| `-v, --version`       | Show the version number.                                         |
-
-The command exits with status `0` on success, `1` if the document cannot be converted or `--check` fails, and `2` for
-invalid arguments.
-
-In a typical setup, the following scripts are added to `package.json`:
+In a typical setup, the following scripts are added to the project's `package.json`:
 
 ```json
 {
@@ -50,9 +32,37 @@ In a typical setup, the following scripts are added to `package.json`:
 }
 ```
 
+## Usage
+
+The commandline interface accepts an OpenAPI document in YAML or JSON format.
+The generated TypeScript is printed to STDOUT by default, or optionally redirected to a file as demonstrated below.
+
+```bash
+npx openapi-endpoints openapi.yml --output src/api.ts
+```
+
+An existing TypeScript file can be checked for changes using the `--check` option.
+This command with exit with an error if the output file is missing or out of date.
+
+```bash
+npx openapi-endpoints openapi.yml --check --output src/api.ts
+```
+
+The command exits with status `0` on success, `1` if the document cannot be converted or `--check` fails,
+and `2` for invalid arguments.
+
 ## Generated output
 
-Given a schema like the following:
+The generated TypeScript module contains the following contents.
+
+### Model Types
+
+The generated TypeScript file includes one interface or type alias for every schema in the OpenAPI specification.
+Schemas keep their names when they are valid TypeScript identifiers.
+Other names are converted to PascalCase, so `pet-status` becomes `PetStatus`.
+Generation fails if two schemas convert to the same name, or if a schema uses a reserved word.
+
+Given an OpenAPI schema like the following:
 
 ```yaml
 paths:
@@ -78,7 +88,7 @@ components:
       required: [ id, name ]
 ```
 
-`openapi-endpoints` generates:
+The `openapi-endpoints` command generates the helper types below:
 
 ```ts
 export interface Team {
@@ -106,11 +116,33 @@ export interface Endpoints {
 }
 ```
 
-followed by the helper types described below.
+OpenAPI schemas are mapped to TypeScript outputs using the following rules.
 
-### The endpoint map
+| OpenAPI schema feature                                   | TypeScript output                                   |
+|----------------------------------------------------------|-----------------------------------------------------|
+| `string`, `integer`, `number`, `boolean`, `null`         | `string`, `number`, `boolean`, `null`               |
+| `array` with `items`                                     | `T[]`                                               |
+| `object` with `properties` and `required`                | Properties are optional unless listed in `required` |
+| `object` without `properties`, or `additionalProperties` | An index signature, such as `{ [key: string]: T }`  |
+| `enum` and `const`                                       | Literal unions, such as `"PD" \| "AP"`              |
+| `nullable: true` and `type: [..., "null"]`               | `T \| null`                                         |
+| `allOf`                                                  | An intersection, or the single referenced type      |
+| `oneOf` and `anyOf`                                      | A union                                             |
+| `$ref` to `#/components/schemas/<name>`                  | The model type name                                 |
+| Empty schemas and `true`                                 | `unknown`                                           |
 
-Each operation in `Endpoints` has the same five properties:
+Some caveats to note:
+
+- Default OpenAPI values do **not** make properties required.
+- Annotation and validation keywords (`description`, `format`, `pattern`, `maxLength`, `readOnly`, `example`)
+- do not change the generated type
+- The `description`, `format`,`default`, and `deprecated` annotations are copied into documentation comments.
+- Vendor extensions starting with `x-` are ignored.
+
+### Endpoints Map
+
+The `Endpoints` map contains the path parameters, query parameters, request body, and JSON responses of every operation.
+Each entry is keyed by path and HTTP method and has the same five properties:
 
 | Property    | Contents                                                                                                  |
 |-------------|-----------------------------------------------------------------------------------------------------------|
@@ -121,10 +153,11 @@ Each operation in `Endpoints` has the same five properties:
 | `responses` | Every response body keyed by status, such as `200`, `"4XX"`, or `default`.                                |
 
 Response bodies use `void` for responses without content and `unknown` for content types other than JSON.
-Path-level parameters are merged into each operation, and `$ref` values pointing to `components.parameters`,
-`components.requestBodies`, and `components.responses` are resolved. Header and cookie parameters are not included.
+Header and cookie parameters are not included.
 
 ### Helper types
+
+Generic type lookups provide developers with flexible typing options.
 
 | Type                              | Description                                           |
 |-----------------------------------|-------------------------------------------------------|
@@ -141,7 +174,7 @@ Path-level parameters are merged into each operation, and `$ref` values pointing
 
 Every lookup resolves to `never` when the method is not defined for the path.
 Because they accept any `HttpMethod`, the helpers work in generic function signatures.
-For example, a minimal typed client built on `fetch`:
+For example, a minimal typed client might look like:
 
 ```ts
 import type { EndpointPathParams, EndpointPathsWith, EndpointQueryParams, EndpointResponse } from "./api";
@@ -157,67 +190,11 @@ async function get<P extends EndpointPathsWith<"get">>(
   path: P,
   options: GetOptions<P> = {},
 ): Promise<EndpointResponse<P, "get">> {
-  let url: string = path;
-  for (const [name, value] of Object.entries(options.pathParams ?? {})) {
-    url = url.replace(`{${name}}`, encodeURIComponent(String(value)));
-  }
-
-  const query = new URLSearchParams();
-  for (const [name, value] of Object.entries(options.queryParams ?? {})) {
-    if (value !== undefined) query.set(name, Array.isArray(value) ? value.join(",") : String(value));
-  }
-
-  const response = await fetch(`https://api.example.com${url}?${query}`);
-  return await response.json();
+  // HTTP logic goes here
 }
 
 // Paths, parameters, and the response type are all checked against the schema
 const team = await get("/teams/{id}/", {pathParams: {id: 1}});
-```
-
-### Model names
-
-Schemas keep their names when they are valid TypeScript identifiers.
-Other names are converted to PascalCase, so `pet-status` becomes `PetStatus`.
-Generation fails if two schemas convert to the same name, or if a schema uses a
-reserved word or the name of a generated declaration, such as `Endpoints` or `HttpMethod`.
-
-To use a different name in your application, add an alias in your own code:
-
-```ts
-export type { RestrictedUser as User } from "./api";
-```
-
-## Supported schema features
-
-| Schema feature                                           | TypeScript output                                   |
-|----------------------------------------------------------|-----------------------------------------------------|
-| `string`, `integer`, `number`, `boolean`, `null`         | `string`, `number`, `boolean`, `null`               |
-| `array` with `items`                                     | `T[]`                                               |
-| `object` with `properties` and `required`                | Properties are optional unless listed in `required` |
-| `object` without `properties`, or `additionalProperties` | An index signature, such as `{ [key: string]: T }`  |
-| `enum` and `const`                                       | Literal unions, such as `"PD" \| "AP"`              |
-| `nullable: true` and `type: [..., "null"]`               | `T \| null`                                         |
-| `allOf`                                                  | An intersection, or the single referenced type      |
-| `oneOf` and `anyOf`                                      | A union                                             |
-| `$ref` to `#/components/schemas/<name>`                  | The model type name                                 |
-| Empty schemas and `true`                                 | `unknown`                                           |
-
-Default values do not make properties required.
-Annotation and validation keywords such as `description`, `format`, `pattern`, `maxLength`, 
-`readOnly`, and `example` do not change the generated type, and `description`, `format`,
-`default`, and `deprecated` are copied into documentation comments.
-Vendor extensions starting with `x-` are ignored.
-
-## Development
-
-Development requires Node.js 22.18 or newer, which runs the TypeScript sources and tests directly without a build step.
-
-```bash
-npm install
-npm test           # Run the test suite
-npm run typecheck  # Type check the sources and tests
-npm run build      # Compile the package into dist/
 ```
 
 ## License
