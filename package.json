@@ -1,6 +1,6 @@
 {
   "name": "@better-hpc/openapi-endpoints",
-  "version": "0.1.0",
+  "version": "0.0.0",
   "description": "Generate TypeScript model types and a typed endpoint map from an OpenAPI document.",
   "license": "GPL-3.0-or-later",
   "type": "module",
@@ -8,7 +8,6 @@
     "openapi",
     "typescript",
     "codegen",
-    "drf-spectacular",
     "types"
   ],
   "bin": {
