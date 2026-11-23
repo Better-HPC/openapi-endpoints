@@ -1,18 +1,16 @@
 # openapi-endpoints
 
-Generate TypeScript model types and a typed endpoint map from an OpenAPI document.
+Generate TypeScript models and a typed endpoint map from an OpenAPI document.
 
-`openapi-endpoints` reads an OpenAPI 3.0 or 3.1 document and writes a single TypeScript module containing:
+`openapi-endpoints` reads an OpenAPI document and writes a single TypeScript module containing:
 
 - **Model types**: one interface or type alias for every schema in `components.schemas`, named after the schema.
 - **An `Endpoints` map**: the path parameters, query parameters, JSON request body, and JSON responses of every
   operation, keyed by path and HTTP method.
 - **Helper types**: generic lookups such as `EndpointResponse<"/teams/", "get">` for building typed API clients.
 
-The generated module contains only type declarations, so it adds nothing to your compiled application. It is designed
-for documents produced by server-side schema generators such
-as [drf-spectacular](https://github.com/tfranzel/drf-spectacular), and it deliberately supports a focused subset of
-OpenAPI. Schema keywords that would change the meaning of a type but are not supported raise an error that points to the
+The generated module contains only type declarations, so it adds nothing to your compiled application.
+Schema keywords that would change the meaning of a type but are not supported raise an error that points to the
 offending location, rather than silently producing incorrect types.
 
 ## Installation
@@ -41,7 +39,7 @@ npx openapi-endpoints openapi.yml --output src/api.ts
 The command exits with status `0` on success, `1` if the document cannot be converted or `--check` fails, and `2` for
 invalid arguments.
 
-A typical setup adds a script to `package.json`:
+In a typical setup, the following scripts are added to `package.json`:
 
 ```json
 {
@@ -51,8 +49,6 @@ A typical setup adds a script to `package.json`:
   }
 }
 ```
-
-Running `api:check` in continuous integration catches a committed module that no longer matches the committed schema.
 
 ## Generated output
 
@@ -110,9 +106,7 @@ export interface Endpoints {
 }
 ```
 
-followed by the helper types described below. A complete example is available in [
-`test/fixtures/example.ts`](test/fixtures/example.ts), generated from [
-`test/fixtures/example.yml`](test/fixtures/example.yml).
+followed by the helper types described below.
 
 ### The endpoint map
 
@@ -126,8 +120,8 @@ Each operation in `Endpoints` has the same five properties:
 | `response`  | The union of all successful (`2xx`) response bodies, falling back to the `default` response.              |
 | `responses` | Every response body keyed by status, such as `200`, `"4XX"`, or `default`.                                |
 
-Response bodies are the JSON schema type, `void` for responses without content, and `unknown` for content types other
-than JSON. Path-level parameters are merged into each operation, and `$ref` values pointing to `components.parameters`,
+Response bodies use `void` for responses without content and `unknown` for content types other than JSON.
+Path-level parameters are merged into each operation, and `$ref` values pointing to `components.parameters`,
 `components.requestBodies`, and `components.responses` are resolved. Header and cookie parameters are not included.
 
 ### Helper types
@@ -145,8 +139,9 @@ than JSON. Path-level parameters are merged into each operation, and `$ref` valu
 | `EndpointResponse<P, M>`          | The `response` part of an operation.                  |
 | `EndpointStatusResponse<P, M, S>` | The response body for status `S`, such as `422`.      |
 
-Every lookup resolves to `never` when the method is not defined for the path. Because they accept any `HttpMethod`, the
-helpers work in generic function signatures. For example, a minimal typed client built on `fetch`:
+Every lookup resolves to `never` when the method is not defined for the path.
+Because they accept any `HttpMethod`, the helpers work in generic function signatures.
+For example, a minimal typed client built on `fetch`:
 
 ```ts
 import type { EndpointPathParams, EndpointPathsWith, EndpointQueryParams, EndpointResponse } from "./api";
@@ -182,8 +177,9 @@ const team = await get("/teams/{id}/", {pathParams: {id: 1}});
 
 ### Model names
 
-Schemas keep their names when they are valid TypeScript identifiers. Other names are converted to PascalCase, so
-`pet-status` becomes `PetStatus`. Generation fails if two schemas convert to the same name, or if a schema uses a
+Schemas keep their names when they are valid TypeScript identifiers.
+Other names are converted to PascalCase, so `pet-status` becomes `PetStatus`.
+Generation fails if two schemas convert to the same name, or if a schema uses a
 reserved word or the name of a generated declaration, such as `Endpoints` or `HttpMethod`.
 
 To use a different name in your application, add an alias in your own code:
@@ -207,25 +203,11 @@ export type { RestrictedUser as User } from "./api";
 | `$ref` to `#/components/schemas/<name>`                  | The model type name                                 |
 | Empty schemas and `true`                                 | `unknown`                                           |
 
-Default values do not make properties required. Annotation and validation keywords such as `description`, `format`,
-`pattern`, `maxLength`, `readOnly`, and `example` do not change the generated type, and `description`, `format`,
-`default`, and `deprecated` are copied into documentation comments. Vendor extensions starting with `x-` are ignored.
-
-The following raise an error: keywords such as `not`, `if`, and `patternProperties`, tuple schemas, references to other
-files, and path item references. Swagger 2.0 documents are not supported.
-
-## Programmatic use
-
-```ts
-import { readFile, writeFile } from "node:fs/promises";
-import { generate, parseDocument } from "@better-hpc/openapi-endpoints";
-
-const document = parseDocument(await readFile("openapi.yml", "utf8"));
-await writeFile("src/api.ts", generate(document, {source: "openapi.yml"}));
-```
-
-`parseDocument` and `generate` throw a `GenerationError` when a document cannot be converted. Its `pointer` property
-contains a JSON pointer to the location of the problem.
+Default values do not make properties required.
+Annotation and validation keywords such as `description`, `format`, `pattern`, `maxLength`, 
+`readOnly`, and `example` do not change the generated type, and `description`, `format`,
+`default`, and `deprecated` are copied into documentation comments.
+Vendor extensions starting with `x-` are ignored.
 
 ## Development
 
@@ -238,16 +220,7 @@ npm run typecheck  # Type check the sources and tests
 npm run build      # Compile the package into dist/
 ```
 
-The test suite compares the module generated from `test/fixtures/example.yml` with the reviewed output in
-`test/fixtures/example.ts`. After an intentional change to the generated output, update the fixture and review the
-difference:
-
-```bash
-UPDATE_FIXTURES=1 npm test
-git diff test/fixtures/example.ts
-```
-
 ## License
 
 `openapi-endpoints` is free software, released under the GNU General Public License version 3.
-See [`LICENSE`](LICENSE) for the full license text.
+See [`LICENSE.md`](LICENSE) for the full license text.
