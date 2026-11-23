@@ -11,7 +11,7 @@ import { parseArguments } from "./cli.ts";
 import { parseOpenApiText, readOpenApiSource } from "./document.ts";
 import { convertEndpoints } from "./endpoints.ts";
 import { convertModels } from "./models.ts";
-import { assignModelNames } from "./naming.ts";
+import { deriveModelNames } from "./naming.ts";
 import { checkOutput, type OutputStreams, reportError, writeOutput } from "./output.ts";
 import { printModule } from "./printer.ts";
 
@@ -35,10 +35,9 @@ export function main(args: readonly string[], streams: OutputStreams = process):
     const openApiSource = readOpenApiSource(parsedArgs.schema);
     const openApiSpec = parseOpenApiText(openApiSource.text);
 
-    // Type names are assigned first because both conversions refer to models by name
-    const modelNames = assignModelNames(openApiSpec);
-    const models = convertModels(openApiSpec, modelNames);
-    const endpoints = convertEndpoints(openApiSpec, modelNames);
+    const modelNameMap = deriveModelNames(openApiSpec);
+    const models = convertModels(openApiSpec, modelNameMap);
+    const endpoints = convertEndpoints(openApiSpec, modelNameMap);
     const code = printModule(openApiSpec, models, endpoints, openApiSource.name);
 
     if (parsedArgs.action === "check") {

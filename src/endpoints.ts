@@ -9,7 +9,7 @@
  */
 
 import { GenerationError } from "./errors.ts";
-import type { ModelNames } from "./naming.ts";
+import type { ModelNameMap } from "./naming.ts";
 import {
   expectRecord,
   hasOwn,
@@ -74,7 +74,7 @@ interface Parameter {
  * @returns The `Endpoints` declaration, with one property per path, sorted by path.
  * @throws GenerationError If a path, operation, or schema cannot be converted.
  */
-export function convertEndpoints(document: OpenApiDocument, modelNames: ModelNames): DeclarationNode {
+export function convertEndpoints(document: OpenApiDocument, modelNames: ModelNameMap): DeclarationNode {
   const context: GeneratorContext = {document, modelNames};
   const paths = optionalRecord(document, "paths", "#");
   const properties = Object.keys(paths).sort().map((path) => {

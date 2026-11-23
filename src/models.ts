@@ -7,7 +7,7 @@
  * shared schema converter that also handles schemas inside operations.
  */
 
-import type { ModelNames } from "./naming.ts";
+import type { ModelNameMap } from "./naming.ts";
 import { pointerTo, readComponents, type OpenApiDocument } from "./navigation.ts";
 import { declaration, type DeclarationNode } from "./nodes.ts";
 import { convertSchema, schemaDocs, type GeneratorContext } from "./schemas.ts";
@@ -20,7 +20,7 @@ import { convertSchema, schemaDocs, type GeneratorContext } from "./schemas.ts";
  * @returns One declaration per schema, in the order of `modelNames`.
  * @throws GenerationError If a schema cannot be converted.
  */
-export function convertModels(document: OpenApiDocument, modelNames: ModelNames): DeclarationNode[] {
+export function convertModels(document: OpenApiDocument, modelNames: ModelNameMap): DeclarationNode[] {
   const schemas = readComponents(document, "schemas");
   const context: GeneratorContext = {document, modelNames};
 
