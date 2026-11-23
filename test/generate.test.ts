@@ -4,7 +4,7 @@ import assert from "node:assert/strict";
 import { writeFileSync } from "node:fs";
 import { describe, it } from "node:test";
 
-import { parseOpenApiText } from "../src/document.ts";
+import { parseOpenApiText } from "../src/openapi.ts";
 import { generate, GENERATED_NAMES } from "../src/generate.ts";
 import { buildDocument, fixturePath, readFixture, typeCheck } from "./support.ts";
 

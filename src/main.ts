@@ -8,12 +8,12 @@
  */
 
 import { parseArguments } from "./cli.ts";
-import { parseOpenApiText, readOpenApiSource } from "./document.ts";
-import { convertEndpoints } from "./endpoints.ts";
-import { convertModels } from "./models.ts";
-import { deriveModelNames } from "./naming.ts";
+import { deriveEndpoints } from "./generation/endpoints.ts";
+import { deriveModels } from "./generation/models.ts";
+import { deriveModelNames } from "./generation/naming.ts";
+import { renderModule } from "./generation/render.ts";
+import { parseOpenApiText, readOpenApiSource } from "./openapi.ts";
 import { checkOutput, type OutputStreams, reportError, writeOutput } from "./output.ts";
-import { printModule } from "./printer.ts";
 
 /** Exit code for a successful run. */
 const EXIT_SUCCESS = 0;
@@ -36,9 +36,9 @@ export function main(args: readonly string[], streams: OutputStreams = process):
     const openApiSpec = parseOpenApiText(openApiSource.text);
 
     const modelNameMap = deriveModelNames(openApiSpec);
-    const models = convertModels(openApiSpec, modelNameMap);
-    const endpoints = convertEndpoints(openApiSpec, modelNameMap);
-    const code = printModule(openApiSpec, models, endpoints, openApiSource.name);
+    const models = deriveModels(openApiSpec, modelNameMap);
+    const endpoints = deriveEndpoints(openApiSpec, modelNameMap);
+    const code = renderModule(openApiSpec, models, endpoints, openApiSource.name);
 
     if (parsedArgs.action === "check") {
       const upToDate = checkOutput(code, parsedArgs.output, streams);
@@ -53,3 +53,5 @@ export function main(args: readonly string[], streams: OutputStreams = process):
     return EXIT_FAILURE;
   }
 }
+
+process.exitCode = main(process.argv.slice(2));

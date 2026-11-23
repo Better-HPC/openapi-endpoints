@@ -8,7 +8,7 @@
  * described as `unknown`.
  */
 
-import { GenerationError } from "./errors.ts";
+import { GenerationError } from "../errors.ts";
 import type { ModelNameMap } from "./naming.ts";
 import {
   expectRecord,
@@ -18,7 +18,7 @@ import {
   pointerTo,
   resolveObject,
   type OpenApiDocument,
-} from "./navigation.ts";
+} from "../navigation.ts";
 import {
   buildDocs,
   declaration,
@@ -31,7 +31,7 @@ import {
   union,
   UNKNOWN,
   VOID,
-} from "./nodes.ts";
+} from "../nodes.ts";
 import { convertSchema, type GeneratorContext } from "./schemas.ts";
 
 /** Name of the declared endpoint map. */
@@ -74,7 +74,7 @@ interface Parameter {
  * @returns The `Endpoints` declaration, with one property per path, sorted by path.
  * @throws GenerationError If a path, operation, or schema cannot be converted.
  */
-export function convertEndpoints(document: OpenApiDocument, modelNames: ModelNameMap): DeclarationNode {
+export function deriveEndpoints(document: OpenApiDocument, modelNames: ModelNameMap): DeclarationNode {
   const context: GeneratorContext = {document, modelNames};
   const paths = optionalRecord(document, "paths", "#");
   const properties = Object.keys(paths).sort().map((path) => {

@@ -4,7 +4,7 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 
 import { GenerationError } from "../src/errors.ts";
-import { schemaDocs } from "../src/schemas.ts";
+import { schemaDocs } from "../src/generation/schemas.ts";
 import { convert } from "./support.ts";
 
 describe("PrimitiveTypes", () => {

@@ -9,9 +9,9 @@
  * cannot terminate a comment early.
  */
 
-import { HELPER_DECLARATIONS } from "./helpers.ts";
-import { isRecord, type OpenApiDocument } from "./navigation.ts";
-import type { DeclarationNode, LiteralValue, TypeNode } from "./nodes.ts";
+import { HELPER_DECLARATIONS } from "../helpers.ts";
+import { isRecord, type OpenApiDocument } from "../navigation.ts";
+import type { DeclarationNode, LiteralValue, TypeNode } from "../nodes.ts";
 
 /** Name of the generator, shown in the header comment of generated modules. */
 const GENERATOR_NAME = "openapi-endpoints";
@@ -46,7 +46,7 @@ const CANONICAL_INTEGER = /^(?:0|[1-9]\d*)$/;
  * @param sourceName Name of the source file shown in the header comment.
  * @returns The TypeScript source of the module.
  */
-export function printModule(
+export function renderModule(
   document: OpenApiDocument,
   models: readonly DeclarationNode[],
   endpoints: DeclarationNode,

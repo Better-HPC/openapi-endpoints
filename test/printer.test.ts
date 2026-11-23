@@ -16,7 +16,7 @@ import {
   union,
   UNKNOWN,
 } from "../src/nodes.ts";
-import { buildDocs, printDeclaration, printDocComment, printPropertyName, printType } from "../src/printer.ts";
+import { buildDocs, printDeclaration, printDocComment, printPropertyName, printType } from "../src/generation/render.ts";
 
 describe("PrintType", () => {
   it("Verify string literals are quoted and escaped", () => {

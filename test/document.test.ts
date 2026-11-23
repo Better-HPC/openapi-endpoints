@@ -3,7 +3,7 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 
-import { componentName, parseOpenApiText, pointerTo, resolveObject } from "../src/document.ts";
+import { componentName, parseOpenApiText, pointerTo, resolveObject } from "../src/openapi.ts";
 import { GenerationError } from "../src/errors.ts";
 import { buildDocument } from "./support.ts";
 

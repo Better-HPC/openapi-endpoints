@@ -6,11 +6,11 @@
  * are chosen beforehand by the naming step, and each schema is converted by the
  * shared schema converter that also handles schemas inside operations.
  */
-
+import { GenerationError } from "../errors.ts";
+import { type OpenApiDocument, pointerTo, readComponents } from "../navigation.ts";
+import { declaration, type DeclarationNode } from "../nodes.ts";
 import type { ModelNameMap } from "./naming.ts";
-import { pointerTo, readComponents, type OpenApiDocument } from "./navigation.ts";
-import { declaration, type DeclarationNode } from "./nodes.ts";
-import { convertSchema, schemaDocs, type GeneratorContext } from "./schemas.ts";
+import { convertSchema, type GeneratorContext, schemaDocs } from "./schemas.ts";
 
 /**
  * Convert every schema in `components.schemas` into a model type declaration.
@@ -20,7 +20,7 @@ import { convertSchema, schemaDocs, type GeneratorContext } from "./schemas.ts";
  * @returns One declaration per schema, in the order of `modelNames`.
  * @throws GenerationError If a schema cannot be converted.
  */
-export function convertModels(document: OpenApiDocument, modelNames: ModelNameMap): DeclarationNode[] {
+export function deriveModels(document: OpenApiDocument, modelNames: ModelNameMap): DeclarationNode[] {
   const schemas = readComponents(document, "schemas");
   const context: GeneratorContext = {document, modelNames};
 

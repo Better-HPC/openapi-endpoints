@@ -1,8 +1,9 @@
 /** Name generation for dynamic TypeScript types fromOpenApi Schemas. */
 
-import { GenerationError } from "./errors.ts";
-import { GENERATED_NAMES } from "./helpers.ts";
-import { type OpenApiDocument, pointerTo, readComponents } from "./navigation.ts";
+import { GenerationError } from "../errors.ts";
+import { GENERATED_NAMES } from "../helpers.ts";
+import { type OpenApiDocument, pointerTo, readComponents } from "../navigation.ts";
+import type { ModelNameMap } from "./naming.ts";
 
 /** Maps OpenAPI schema names to TypeScript names. */
 export type ModelNameMap = ReadonlyMap<string, string>;

@@ -3,9 +3,9 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 
-import { buildEndpoints } from "../src/endpoints.ts";
+import { buildEndpoints } from "../src/generation/endpoints.ts";
 import type { PropertyNode, TypeNode } from "../src/nodes.ts";
-import { printType } from "../src/printer.ts";
+import { printType } from "../src/generation/render.ts";
 import { buildDocument, createContext } from "./support.ts";
 
 /** A part of an operation in the endpoint map. */

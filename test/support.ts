@@ -13,11 +13,11 @@ import { fileURLToPath } from "node:url";
 
 import ts from "typescript";
 
-import { validateDocument, type OpenApiDocument } from "../src/document.ts";
+import { validateDocument, type OpenApiDocument } from "../src/openapi.ts";
 import type { OutputStreams } from "../src/main.ts";
 import { createModelNames } from "../src/models.ts";
-import { printType } from "../src/printer.ts";
-import { convertSchema, type GeneratorContext } from "../src/schemas.ts";
+import { printType } from "../src/generation/render.ts";
+import { convertSchema, type GeneratorContext } from "../src/generation/schemas.ts";
 
 /** Output streams that record everything written to them. */
 export interface CapturedStreams extends OutputStreams {
