@@ -11,7 +11,7 @@
     "types"
   ],
   "bin": {
-    "openapi-endpoints": "./dist/cli.js"
+    "openapi-endpoints": "./dist/bin.js"
   },
   "exports": {
     ".": {

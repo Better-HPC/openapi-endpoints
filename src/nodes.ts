@@ -1,7 +1,7 @@
 /**
- * Syntax nodes describing the TypeScript types emitted by the generator.
+ * Syntax nodes describing the TypeScript types and declarations emitted by the generator.
  *
- * Schema conversion produces these nodes rather than strings, so unions and
+ * The conversion steps produce these nodes rather than strings, so unions and
  * intersections can be flattened and deduplicated as they are built, and so
  * parentheses, indentation, and comments are handled in one place by the printer.
  * Nodes are plain objects and are never modified after they are created.
@@ -25,6 +25,18 @@ export interface PropertyNode {
   readonly optional: boolean;
 
   /** Lines of the documentation comment written above the property. */
+  readonly docs: readonly string[];
+}
+
+/** A named type exported by the generated module. */
+export interface DeclarationNode {
+  /** The name of the declared type. */
+  readonly name: string;
+
+  /** The declared type. */
+  readonly type: TypeNode;
+
+  /** Lines of the documentation comment written above the declaration. */
   readonly docs: readonly string[];
 }
 
@@ -124,6 +136,18 @@ export function property(name: string, type: TypeNode, optional = false, docs: r
 }
 
 /**
+ * Create a declaration of a named type.
+ *
+ * @param name The name of the declared type.
+ * @param type The declared type.
+ * @param docs Lines of the documentation comment written above the declaration.
+ * @returns The declaration node.
+ */
+export function declaration(name: string, type: TypeNode, docs: readonly string[] = []): DeclarationNode {
+  return {name, type, docs};
+}
+
+/**
  * Create a union of types, simplified where possible.
  *
  * Nested unions are flattened, duplicate members are removed, and `never` members
@@ -178,6 +202,33 @@ export function intersection(members: readonly TypeNode[]): TypeNode {
  */
 export function isKeyword(node: TypeNode, name: KeywordName): boolean {
   return node.kind === "keyword" && node.name === name;
+}
+
+/**
+ * Combine descriptive text and tags into the lines of a documentation comment.
+ *
+ * Text values that are not strings, are blank, or repeat an earlier value are skipped.
+ * Each remaining text and the block of tags are separated by a blank line.
+ *
+ * @param texts Candidate descriptions, such as a summary followed by a longer description.
+ * @param tags Documentation tags, such as `@deprecated`.
+ * @returns The lines of the documentation comment.
+ */
+export function buildDocs(texts: readonly unknown[], tags: readonly string[] = []): string[] {
+  const blocks: string[][] = [];
+  const seen = new Set<string>();
+  for (const text of texts) {
+    if (typeof text !== "string") continue;
+
+    const trimmed = text.trim();
+    if (trimmed === "" || seen.has(trimmed)) continue;
+
+    seen.add(trimmed);
+    blocks.push(trimmed.split(/\r?\n/));
+  }
+
+  if (tags.length > 0) blocks.push([...tags]);
+  return blocks.flatMap((block, index) => index === 0 ? block : ["", ...block]);
 }
 
 /**

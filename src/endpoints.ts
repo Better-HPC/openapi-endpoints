@@ -1,5 +1,5 @@
 /**
- * Endpoint map built from the operations in `paths`.
+ * Endpoint map declaration built from the operations in `paths`.
  *
  * Every path in the document becomes a property of the generated `Endpoints`
  * interface, with one entry per HTTP method. Each entry describes the operation's
@@ -8,17 +8,42 @@
  * described as `unknown`.
  */
 
-import { expectRecord, hasOwn, optionalRecord, pointerTo, resolveObject } from "./document.ts";
 import { GenerationError } from "./errors.ts";
-import { NEVER, objectOf, property, type PropertyNode, type TypeNode, union, UNKNOWN, VOID } from "./nodes.ts";
-import { buildDocs } from "./printer.ts";
+import type { ModelNames } from "./naming.ts";
+import {
+  expectRecord,
+  hasOwn,
+  HTTP_METHODS,
+  optionalRecord,
+  pointerTo,
+  resolveObject,
+  type OpenApiDocument,
+} from "./navigation.ts";
+import {
+  buildDocs,
+  declaration,
+  type DeclarationNode,
+  NEVER,
+  objectOf,
+  property,
+  type PropertyNode,
+  type TypeNode,
+  union,
+  UNKNOWN,
+  VOID,
+} from "./nodes.ts";
 import { convertSchema, type GeneratorContext } from "./schemas.ts";
 
-/** HTTP methods that can define an operation on a path, in the order used by the OpenAPI specification. */
-export const HTTP_METHODS = ["get", "put", "post", "delete", "options", "head", "patch", "trace"] as const;
+/** Name of the declared endpoint map. */
+const ENDPOINTS_NAME = "Endpoints";
 
-/** An HTTP method that can define an operation on a path. */
-export type HttpMethod = (typeof HTTP_METHODS)[number];
+/** Documentation comment lines written above the endpoint map. */
+const ENDPOINTS_DOCS = [
+  "Request and response types for every operation in the API, keyed by path and HTTP method.",
+  "",
+  "Each operation describes its path parameters, query parameters, JSON request body,",
+  "successful JSON response, and JSON responses keyed by status. Missing parts are `never`.",
+];
 
 /** Pattern matching response status keys for successful responses, such as `200` or `2XX`. */
 const SUCCESS_STATUS = /^2(?:\d\d|XX)$/i;
@@ -42,19 +67,21 @@ interface Parameter {
 }
 
 /**
- * Build the type of the `Endpoints` map for every operation in the document.
+ * Convert every operation in the document into the declaration of the `Endpoints` map.
  *
- * @param context Shared state for the document being converted.
- * @returns An object type with one property per path, sorted by path.
+ * @param document The document being converted.
+ * @param modelNames TypeScript type names for the schemas in `components.schemas`, keyed by schema name.
+ * @returns The `Endpoints` declaration, with one property per path, sorted by path.
  * @throws GenerationError If a path, operation, or schema cannot be converted.
  */
-export function buildEndpoints(context: GeneratorContext): TypeNode {
-  const paths = optionalRecord(context.document, "paths", "#");
+export function convertEndpoints(document: OpenApiDocument, modelNames: ModelNames): DeclarationNode {
+  const context: GeneratorContext = {document, modelNames};
+  const paths = optionalRecord(document, "paths", "#");
   const properties = Object.keys(paths).sort().map((path) => {
     return property(path, convertPathItem(paths[path], context, pointerTo("#/paths", path)));
   });
 
-  return objectOf(properties);
+  return declaration(ENDPOINTS_NAME, objectOf(properties), ENDPOINTS_DOCS);
 }
 
 /**

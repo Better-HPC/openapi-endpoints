@@ -9,11 +9,12 @@
  * `description` or `maxLength`, do not affect the generated type.
  */
 
-import { componentName, expectRecord, hasOwn, isRecord, pointerTo, type OpenApiDocument } from "./document.ts";
 import { GenerationError } from "./errors.ts";
+import { componentName, expectRecord, hasOwn, isRecord, pointerTo, type OpenApiDocument } from "./navigation.ts";
 import {
   arrayOf,
   BOOLEAN,
+  buildDocs,
   intersection,
   literal,
   NEVER,
@@ -27,7 +28,6 @@ import {
   union,
   UNKNOWN,
 } from "./nodes.ts";
-import { buildDocs } from "./printer.ts";
 
 /** Shared state used while converting an OpenAPI document. */
 export interface GeneratorContext {
