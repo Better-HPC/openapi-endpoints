@@ -42,7 +42,7 @@ export function parseDocument(text: string): OpenApiDocument {
  * @returns The value, typed as an OpenAPI document.
  * @throws GenerationError If the value is not an OpenAPI 3.0 or 3.1 document.
  */
-export function validateDocument(value: unknown): OpenApiDocument {
+function validateDocument(value: unknown): OpenApiDocument {
   const document = expectRecord(value, "#");
   const version = document["openapi"];
   if (typeof version !== "string" || !SUPPORTED_VERSION.test(version)) {
