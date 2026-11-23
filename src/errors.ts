@@ -1,14 +1,8 @@
-/**
- * Error types raised while generating TypeScript definitions.
- *
- * Problems with an OpenAPI document are reported with a JSON pointer to the location
- * that caused them, so the offending definition can be found quickly in large
- * documents.
- */
+/** Custom application errors designed to provide useful error messaging. */
 
-/** An error raised when an OpenAPI document cannot be converted into TypeScript definitions. */
+/** An error raised when an OpenAPI document cannot be parsed or converted into TypeScript definitions. */
 export class GenerationError extends Error {
-  /** JSON pointer to the location in the document that caused the error. */
+  /** JSON pointer to the location in the document causing the error. */
   readonly pointer: string;
 
   /**
