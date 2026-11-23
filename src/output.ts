@@ -3,14 +3,13 @@
  *
  * Generated code is written to standard output, written to a file, or compared with
  * an existing file to confirm it is up to date. Errors raised by any step are reported
- * here as well, so apart from the help and version text, every message the command
- * prints comes from this module.
+ * here as well, so apart from the messages commander prints while parsing arguments,
+ * every message the command prints comes from this module.
  */
 
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname } from "node:path";
 
-import { UsageError } from "./errors.ts";
 import { isRecord } from "./navigation.ts";
 
 /** Streams the command line interface writes output and messages to. */
@@ -65,15 +64,12 @@ export function checkOutput(code: string, path: string, streams: OutputStreams):
 /**
  * Report an error raised by any step of the command.
  *
- * Usage errors are followed by a pointer to the help text.
- *
  * @param error The thrown value.
  * @param streams Streams for output and messages.
  */
 export function reportError(error: unknown, streams: OutputStreams): void {
   const message = error instanceof Error ? error.message : String(error);
-  const hint = error instanceof UsageError ? "Run \"openapi-endpoints --help\" for usage.\n" : "";
-  streams.stderr.write(`error: ${message}\n${hint}`);
+  streams.stderr.write(`error: ${message}\n`);
 }
 
 /**

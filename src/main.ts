@@ -7,10 +7,9 @@
  * step are handled here to determine the final exit code.
  */
 
-import { parseArguments, printUsage, printVersion } from "./arguments.ts";
+import { parseArguments } from "./cli.ts";
 import { parseDocument } from "./document.ts";
 import { convertEndpoints } from "./endpoints.ts";
-import { UsageError } from "./errors.ts";
 import { convertModels } from "./models.ts";
 import { assignModelNames } from "./naming.ts";
 import { checkOutput, type OutputStreams, reportError, writeOutput } from "./output.ts";
@@ -23,9 +22,6 @@ const EXIT_SUCCESS = 0;
 /** Exit code for a failed run (including a failed schema check). */
 const EXIT_FAILURE = 1;
 
-/** Exit code for invalid command line arguments. */
-const EXIT_USAGE = 2;
-
 /**
  * Generate TypeScript definitions from an OpenAPI document as described by the command line arguments.
  *
@@ -34,19 +30,10 @@ const EXIT_USAGE = 2;
  * @returns The process exit code.
  */
 export function main(args: readonly string[], streams: OutputStreams = process): number {
+  const parsedArgs = parseArguments(args);
+
   try {
-    const command = parseArguments(args);
-    if (command.kind === "help") {
-      printUsage(streams);
-      return EXIT_SUCCESS;
-    }
-
-    if (command.kind === "version") {
-      printVersion(streams);
-      return EXIT_SUCCESS;
-    }
-
-    const source = readSource(command.schema);
+    const source = readSource(parsedArgs.schema);
     const document = parseDocument(source.text);
 
     // Type names are assigned first because both conversions refer to models by name
@@ -55,16 +42,16 @@ export function main(args: readonly string[], streams: OutputStreams = process):
     const endpoints = convertEndpoints(document, modelNames);
     const code = printModule(document, models, endpoints, source.name);
 
-    if (command.kind === "check") {
-      const upToDate = checkOutput(code, command.output, streams);
+    if (parsedArgs.action === "check") {
+      const upToDate = checkOutput(code, parsedArgs.output, streams);
       return upToDate ? EXIT_SUCCESS : EXIT_FAILURE;
     }
 
-    writeOutput(code, command.output, streams);
+    writeOutput(code, parsedArgs.output, streams);
     return EXIT_SUCCESS;
 
   } catch (error) {
     reportError(error, streams);
-    return error instanceof UsageError ? EXIT_USAGE : EXIT_FAILURE;
+    return EXIT_FAILURE;
   }
 }

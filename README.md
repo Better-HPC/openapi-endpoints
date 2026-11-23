@@ -48,9 +48,6 @@ This command with exit with an error if the output file is missing or out of dat
 npx openapi-endpoints openapi.yml --check --output src/api.ts
 ```
 
-The command exits with status `0` on success, `1` if the document cannot be converted or `--check` fails,
-and `2` for invalid arguments.
-
 ## Generated output
 
 The generated TypeScript module contains the following contents.

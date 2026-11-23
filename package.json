@@ -17,7 +17,7 @@
     "dist"
   ],
   "engines": {
-    "node": ">=22"
+    "node": ">=22.12"
   },
   "scripts": {
     "build": "tsc --project tsconfig.build.json",
@@ -26,6 +26,7 @@
     "prepack": "npm run build"
   },
   "dependencies": {
+    "commander": "^15.0.0",
     "yaml": "^2.9.0"
   },
   "devDependencies": {
