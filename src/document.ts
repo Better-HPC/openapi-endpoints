@@ -1,29 +1,43 @@
-/**
- * Parsing and validation of OpenAPI documents.
- *
- * Documents are parsed from YAML or JSON and validated just enough to confirm they
- * use a supported OpenAPI version. The rest of the document is treated as untrusted
- * input and checked by the later steps as they read it.
- */
+/** Parsing and validation for OpenAPI documents. */
 
+import { readFileSync } from "node:fs";
+import { basename } from "node:path";
 import { parse } from "yaml";
 
 import { GenerationError } from "./errors.ts";
-import { expectRecord, pointerTo, type OpenApiDocument } from "./navigation.ts";
+import { expectRecord, type OpenApiDocument, pointerTo } from "./navigation.ts";
 
-/** Pattern matching the OpenAPI versions supported by the generator. */
+/** Regex matching the supported OpenAPI versions. */
 const SUPPORTED_VERSION = /^3\.[01](?:\.\d+)?$/;
 
+/** The contents and file name for an OpenAPI document. */
+export interface SourceText {
+  /** The document contents. */
+  readonly text: string;
+
+  /** The file name without its directory. */
+  readonly name: string;
+}
+
 /**
- * Parse an OpenAPI document from YAML or JSON text.
+ * Read an OpenAPI document from a file path or URL.
  *
- * JSON is a subset of YAML, so both formats are read by the same parser.
- *
- * @param text The document contents.
- * @returns The parsed and validated document.
- * @throws GenerationError If the text cannot be parsed or is not an OpenAPI 3.0 or 3.1 document.
+ * @param path The file path.
+ * @returns The document contents and file name.
+ * @throws Error If the file cannot be read.
  */
-export function parseDocument(text: string): OpenApiDocument {
+export function readOpenApiSource(path: string): SourceText {
+  return {text: readFileSync(path, "utf8"), name: basename(path)};
+}
+
+/**
+ * Parse the YAML or JSON text from an OpenAPI specification.
+ *
+ * @param text The text of an OpenAPI specification.
+ * @returns The parsed and validated content.
+ * @throws GenerationError If the input cannot be parsed.
+ */
+export function parseOpenApiText(text: string): OpenApiDocument {
   let value: unknown;
   try {
     value = parse(text);
@@ -36,17 +50,18 @@ export function parseDocument(text: string): OpenApiDocument {
 }
 
 /**
- * Confirm a parsed value is an OpenAPI 3.0 or 3.1 document.
+ * Confirm the given text is a valid OpenAPI specification.
  *
- * @param value The parsed document.
- * @returns The value, typed as an OpenAPI document.
- * @throws GenerationError If the value is not an OpenAPI 3.0 or 3.1 document.
+ * @param value The text to validate.
+ * @returns The input `value`, typed as an OpenAPI document.
+ * @throws GenerationError If the `value` is not a valid OpenAPI specification.
  */
 function validateDocument(value: unknown): OpenApiDocument {
   const document = expectRecord(value, "#");
   const version = document["openapi"];
+
   if (typeof version !== "string" || !SUPPORTED_VERSION.test(version)) {
-    throw new GenerationError("Only OpenAPI 3.0 and 3.1 documents are supported", pointerTo("#", "openapi"));
+    throw new GenerationError("The provided OpenAPI version is not supported", pointerTo("#", "openapi"));
   }
 
   return document as OpenApiDocument;

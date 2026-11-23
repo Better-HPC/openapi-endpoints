@@ -3,24 +3,24 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 
-import { componentName, parseDocument, pointerTo, resolveObject } from "../src/document.ts";
+import { componentName, parseOpenApiText, pointerTo, resolveObject } from "../src/document.ts";
 import { GenerationError } from "../src/errors.ts";
 import { buildDocument } from "./support.ts";
 
 describe("DocumentParsing", () => {
   it("Verify YAML and JSON documents are parsed", () => {
-    assert.equal(parseDocument("openapi: 3.0.3\ninfo: {title: Test}\n").openapi, "3.0.3");
-    assert.equal(parseDocument('{"openapi": "3.1.0"}').openapi, "3.1.0");
+    assert.equal(parseOpenApiText("openapi: 3.0.3\ninfo: {title: Test}\n").openapi, "3.0.3");
+    assert.equal(parseOpenApiText('{"openapi": "3.1.0"}').openapi, "3.1.0");
   });
 
   it("Verify unsupported OpenAPI versions are rejected", () => {
-    assert.throws(() => parseDocument("swagger: '2.0'\n"), /Only OpenAPI 3.0 and 3.1/);
-    assert.throws(() => parseDocument("openapi: 4.0.0\n"), /Only OpenAPI 3.0 and 3.1/);
+    assert.throws(() => parseOpenApiText("swagger: '2.0'\n"), /Only OpenAPI 3.0 and 3.1/);
+    assert.throws(() => parseOpenApiText("openapi: 4.0.0\n"), /Only OpenAPI 3.0 and 3.1/);
   });
 
   it("Verify malformed text and non-object documents are rejected", () => {
-    assert.throws(() => parseDocument("openapi: [3.0"), /not valid YAML or JSON/);
-    assert.throws(() => parseDocument("- openapi"), /Expected an object at #/);
+    assert.throws(() => parseOpenApiText("openapi: [3.0"), /not valid YAML or JSON/);
+    assert.throws(() => parseOpenApiText("- openapi"), /Expected an object at #/);
   });
 });
 

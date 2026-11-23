@@ -4,12 +4,12 @@ import assert from "node:assert/strict";
 import { writeFileSync } from "node:fs";
 import { describe, it } from "node:test";
 
-import { parseDocument } from "../src/document.ts";
+import { parseOpenApiText } from "../src/document.ts";
 import { generate, GENERATED_NAMES } from "../src/generate.ts";
 import { buildDocument, fixturePath, readFixture, typeCheck } from "./support.ts";
 
 /** Generated module for the example fixture, which is shared by several tests. */
-const EXAMPLE_OUTPUT = generate(parseDocument(readFixture("example.yml")), {source: "example.yml"});
+const EXAMPLE_OUTPUT = generate(parseOpenApiText(readFixture("example.yml")), {source: "example.yml"});
 
 /** Type level assertions about the module generated from the example fixture. */
 const EXAMPLE_ASSERTIONS = `
