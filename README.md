@@ -223,4 +223,4 @@ npm run build      # Compile the package into dist/
 ## License
 
 `openapi-endpoints` is free software, released under the GNU General Public License version 3.
-See [`LICENSE.md`](LICENSE) for the full license text.
+See the [license](LICENSE.md) for the full license text.
