@@ -1,7 +1,5 @@
 /** Name generation for the model types declared for OpenAPI schemas. */
 
-import { GenerationError } from "../errors.ts";
-import { pointerTo } from "../openapi/navigation.ts";
 import type { OpenApiDocument } from "../openapi/parse.ts";
 import { ENDPOINT_TYPE_NAMES } from "./endpoints.ts";
 
@@ -36,7 +34,7 @@ const RESERVED_TYPE_NAMES: ReadonlySet<string> = new Set([
  *
  * @param openApiSpec The parsed OpenAPI specification.
  * @returns A mapping from schema name to type name.
- * @throws GenerationError If a schema name cannot be converted or conflicts with another name.
+ * @throws Error If a schema name cannot be converted or conflicts with another name.
  */
 export function deriveModelNames(openApiSpec: OpenApiDocument): ModelNameMap {
   const typeNames = new Map<string, string>();
@@ -44,20 +42,19 @@ export function deriveModelNames(openApiSpec: OpenApiDocument): ModelNameMap {
 
   for (const schemaName of Object.keys(openApiSpec.components?.schemas ?? {}).sort()) {
     // Create type name
-    const pointer = pointerTo("#/components/schemas", schemaName);
+    const pointer = `#/components/schemas/${schemaName}`;
     const typeName = toIdentifier(schemaName, pointer);
 
     // Ensure type name does not conflict with reserved names
     if (RESERVED_TYPE_NAMES.has(typeName) || ENDPOINT_TYPE_NAMES.has(typeName)) {
-      throw new GenerationError(`Schema name ${JSON.stringify(schemaName)} conflicts with a reserved type name`, pointer);
+      throw new Error(`Schema name ${JSON.stringify(schemaName)} conflicts with a reserved type name at ${pointer}`);
     }
 
     // Ensure type name is not a duplicate
     const existingSchemaName = schemaNamesByTypeName.get(typeName);
     if (existingSchemaName !== undefined) {
-      throw new GenerationError(
-        `Schemas ${JSON.stringify(existingSchemaName)} and ${JSON.stringify(schemaName)} both use the type name ${JSON.stringify(typeName)}`,
-        pointer,
+      throw new Error(
+        `Schemas ${JSON.stringify(existingSchemaName)} and ${JSON.stringify(schemaName)} both use the type name ${JSON.stringify(typeName)} at ${pointer}`,
       );
     }
 
@@ -76,9 +73,9 @@ export function deriveModelNames(openApiSpec: OpenApiDocument): ModelNameMap {
  * and joined in PascalCase, with an underscore prefix if the result starts with a digit.
  *
  * @param name The OpenAPI schema name.
- * @param pointer JSON pointer to the schema location in the parent specification.
+ * @param pointer Location of the schema in the document.
  * @returns The TypeScript identifier.
- * @throws GenerationError If the name contains no characters usable in an identifier.
+ * @throws Error If the name contains no characters usable in an identifier.
  */
 function toIdentifier(name: string, pointer: string): string {
   if (IDENTIFIER.test(name)) return name;
@@ -90,7 +87,7 @@ function toIdentifier(name: string, pointer: string): string {
     .join("");
 
   if (identifier === "") {
-    throw new GenerationError(`Schema name ${JSON.stringify(name)} cannot be converted to a type name`, pointer);
+    throw new Error(`Schema name ${JSON.stringify(name)} cannot be converted to a type name at ${pointer}`);
   }
 
   // Prefix leading digits with an underscore

@@ -1,5 +1,5 @@
 /**
- * Top level pipeline for generating TypeScript definitions from an OpenAPI document.
+ * Top level logic for generating TypeScript definitions from an OpenAPI document.
  *
  * The `main` function defines the top level application logic and is responsible for
  * executing application steps in order. The logic behind each step is abstracted into
@@ -23,10 +23,10 @@ const EXIT_SUCCESS = 0;
 const EXIT_FAILURE = 1;
 
 /**
- * Generate TypeScript definitions from an OpenAPI document as described by the command line arguments.
+ * Generate TypeScript definitions from an OpenAPI document.
  *
- * @param args The command line arguments, excluding the executable and script paths.
- * @param streams Streams for generated code and messages.
+ * @param args The application command line arguments, excluding the executable and script paths.
+ * @param streams Input/Output streams for generated code and messages.
  * @returns The process exit code.
  */
 export function main(args: readonly string[], streams: OutputStreams = process): number {

@@ -7,6 +7,12 @@
  * and cookie parameters are not included, and content types other than JSON are
  * described as `unknown`.
  *
+ * References to reusable parameters, request bodies, and responses are followed as
+ * they are read, so a problem inside a shared component is reported at the component
+ * rather than at every operation that uses it. As in the models step, the structure
+ * of the document is trusted, and error locations are paths from the document root
+ * with property names written unescaped.
+ *
  * The endpoint map is followed by helper types for looking up parts of it, such as
  * the response body for a path and HTTP method. The helpers rely on mapped and
  * conditional types that the type nodes do not describe, so they are declared as
@@ -14,7 +20,6 @@
  * step rejects schemas whose model type would conflict with them.
  */
 
-import { GenerationError } from "../errors.ts";
 import {
   buildDocs,
   declaration,
@@ -29,21 +34,16 @@ import {
   union,
   UNKNOWN,
   VOID,
-} from "../nodes.ts";
-import {
-  expectRecord,
-  hasOwn,
-  HTTP_METHODS,
-  optionalRecord,
-  pointerTo,
-  resolveObject,
-} from "../openapi/navigation.ts";
-import type { OpenApiDocument } from "../openapi/parse.ts";
+} from "../render.ts";
+import type { ComponentSection, OpenApiDocument } from "../openapi/parse.ts";
 import { convertSchema } from "./models.ts";
 import type { ModelNameMap } from "./naming.ts";
 
 /** Name of the declared endpoint map. */
 const ENDPOINTS_NAME = "Endpoints";
+
+/** HTTP methods that can define an operation on a path, in the order used by the OpenAPI specification. */
+const HTTP_METHODS = ["get", "put", "post", "delete", "options", "head", "patch", "trace"] as const;
 
 /** Documentation comment lines written above the endpoint map. */
 const ENDPOINTS_DOCS = [
@@ -124,6 +124,18 @@ interface EndpointContext {
   readonly modelNames: ModelNameMap;
 }
 
+/** A section of `components` whose objects are found by following references, rather than declared as named types. */
+type ResolvedSection = Exclude<ComponentSection, "schemas">;
+
+/** A document object with any references to other components resolved. */
+interface ResolvedObject {
+  /** The resolved object. */
+  readonly value: Record<string, unknown>;
+
+  /** Location of the resolved object. */
+  readonly pointer: string;
+}
+
 /** A parameter definition with references resolved. */
 interface Parameter {
   /** The parameter name. */
@@ -135,7 +147,7 @@ interface Parameter {
   /** The parameter object from the document. */
   readonly definition: Record<string, unknown>;
 
-  /** JSON pointer to the parameter object. */
+  /** Location of the parameter object. */
   readonly pointer: string;
 }
 
@@ -145,13 +157,13 @@ interface Parameter {
  * @param document The document being converted.
  * @param modelNames TypeScript type names for the schemas in `components.schemas`, keyed by schema name.
  * @returns The `Endpoints` declaration, with one property per path sorted by path, then the helper declarations.
- * @throws GenerationError If a path, operation, or schema cannot be converted.
+ * @throws Error If a path, operation, or schema cannot be converted.
  */
 export function deriveEndpoints(document: OpenApiDocument, modelNames: ModelNameMap): DeclarationNode[] {
   const context: EndpointContext = {document, modelNames};
   const paths = document.paths ?? {};
   const properties = Object.keys(paths).sort().map((path) => {
-    return property(path, convertPathItem(paths[path], context, pointerTo("#/paths", path)));
+    return property(path, convertPathItem(paths[path], context, `#/paths/${path}`));
   });
 
   return [declaration(ENDPOINTS_NAME, objectOf(properties), ENDPOINTS_DOCS), ...HELPER_DECLARATIONS];
@@ -162,20 +174,20 @@ export function deriveEndpoints(document: OpenApiDocument, modelNames: ModelName
  *
  * @param value The path item object.
  * @param context Shared state for the document being converted.
- * @param pointer JSON pointer to the path item.
+ * @param pointer Location of the path item.
  * @returns The object type describing the operations on the path.
- * @throws GenerationError If the path item is a reference or contains invalid operations.
+ * @throws Error If the path item is a reference or an operation cannot be converted.
  */
 function convertPathItem(value: unknown, context: EndpointContext, pointer: string): TypeNode {
-  const item = expectRecord(value, pointer);
-  if (hasOwn(item, "$ref")) {
-    throw new GenerationError("Path item references are not supported", pointerTo(pointer, "$ref"));
+  const item = value as Record<string, unknown>;
+  if (Object.hasOwn(item, "$ref")) {
+    throw new Error(`Path item references are not supported at ${pointer}/$ref`);
   }
 
   const sharedParameters = readParameters(item, context, pointer);
-  const methods = HTTP_METHODS.filter((method) => hasOwn(item, method)).map((method) => {
-    const location = pointerTo(pointer, method);
-    const operation = expectRecord(item[method], location);
+  const methods = HTTP_METHODS.filter((method) => Object.hasOwn(item, method)).map((method) => {
+    const location = `${pointer}/${method}`;
+    const operation = item[method] as Record<string, unknown>;
     return property(
       method,
       convertOperation(operation, sharedParameters, context, location),
@@ -193,9 +205,9 @@ function convertPathItem(value: unknown, context: EndpointContext, pointer: stri
  * @param operation The operation object.
  * @param sharedParameters Parameters defined on the path item, which apply to every operation.
  * @param context Shared state for the document being converted.
- * @param pointer JSON pointer to the operation.
+ * @param pointer Location of the operation.
  * @returns The object type with `path`, `query`, `body`, `response`, and `responses` properties.
- * @throws GenerationError If a parameter, request body, or response cannot be converted.
+ * @throws Error If a parameter, request body, or response cannot be converted.
  */
 function convertOperation(
   operation: Record<string, unknown>,
@@ -231,25 +243,25 @@ function operationDocs(operation: Record<string, unknown>): string[] {
  *
  * @param owner The path item or operation object.
  * @param context Shared state for the document being converted.
- * @param pointer JSON pointer to the owner.
+ * @param pointer Location of the owner.
  * @returns The parameters in the order they are listed.
- * @throws GenerationError If the parameter list or a parameter is malformed.
+ * @throws Error If the parameter list or a parameter is malformed.
  */
 function readParameters(owner: Record<string, unknown>, context: EndpointContext, pointer: string): Parameter[] {
-  if (!hasOwn(owner, "parameters")) return [];
+  if (!Object.hasOwn(owner, "parameters")) return [];
 
-  const listPointer = pointerTo(pointer, "parameters");
+  const listPointer = `${pointer}/parameters`;
   const list = owner["parameters"];
   if (!Array.isArray(list)) {
-    throw new GenerationError("Expected an array of parameters", listPointer);
+    throw new Error(`Expected an array of parameters at ${listPointer}`);
   }
 
   return list.map((entry, index) => {
-    const resolved = resolveObject(context.document, entry, "parameters", pointerTo(listPointer, index));
+    const resolved = resolveObject(entry, "parameters", context, `${listPointer}/${index}`);
     const name = resolved.value["name"];
     const location = resolved.value["in"];
     if (typeof name !== "string" || typeof location !== "string") {
-      throw new GenerationError("Expected a parameter with a string name and location", resolved.pointer);
+      throw new Error(`Expected a parameter with a string name and location at ${resolved.pointer}`);
     }
 
     return {name, location, definition: resolved.value, pointer: resolved.pointer};
@@ -283,7 +295,7 @@ function mergeParameters(shared: readonly Parameter[], own: readonly Parameter[]
  * @param location The parameter location to include.
  * @param context Shared state for the document being converted.
  * @returns The object type, or `never` if the operation has no parameters in the location.
- * @throws GenerationError If a parameter schema cannot be converted.
+ * @throws Error If a parameter schema cannot be converted.
  */
 function convertParameters(
   parameters: readonly Parameter[],
@@ -311,25 +323,25 @@ function convertParameters(
  * @param parameter The parameter.
  * @param context Shared state for the document being converted.
  * @returns The parameter type, or `unknown` if the parameter does not define a schema.
- * @throws GenerationError If the parameter schema cannot be converted.
+ * @throws Error If the parameter schema cannot be converted.
  */
 function convertParameterType(parameter: Parameter, context: EndpointContext): TypeNode {
   const {definition, pointer} = parameter;
-  if (hasOwn(definition, "schema")) {
-    return convertSchema(definition["schema"], context.modelNames, pointerTo(pointer, "schema"));
+  if (Object.hasOwn(definition, "schema")) {
+    return convertSchema(definition["schema"], context.modelNames, `${pointer}/schema`);
   }
 
   // Parameters may describe their value with a single media type instead of a schema
-  const contentPointer = pointerTo(pointer, "content");
-  const content = optionalRecord(definition, "content", pointer);
+  const contentPointer = `${pointer}/content`;
+  const content = (definition["content"] ?? {}) as Record<string, unknown>;
   const [entry] = Object.entries(content);
   if (entry === undefined) return UNKNOWN;
 
   const [mediaType, media] = entry;
-  const mediaPointer = pointerTo(contentPointer, mediaType);
-  const mediaObject = expectRecord(media, mediaPointer);
-  return hasOwn(mediaObject, "schema")
-    ? convertSchema(mediaObject["schema"], context.modelNames, pointerTo(mediaPointer, "schema"))
+  const mediaPointer = `${contentPointer}/${mediaType}`;
+  const mediaObject = media as Record<string, unknown>;
+  return Object.hasOwn(mediaObject, "schema")
+    ? convertSchema(mediaObject["schema"], context.modelNames, `${mediaPointer}/schema`)
     : UNKNOWN;
 }
 
@@ -338,14 +350,14 @@ function convertParameterType(parameter: Parameter, context: EndpointContext): T
  *
  * @param operation The operation object.
  * @param context Shared state for the document being converted.
- * @param pointer JSON pointer to the operation.
+ * @param pointer Location of the operation.
  * @returns The request body type, or `never` if the operation does not accept a JSON body.
- * @throws GenerationError If the request body cannot be converted.
+ * @throws Error If the request body cannot be converted.
  */
 function convertRequestBody(operation: Record<string, unknown>, context: EndpointContext, pointer: string): TypeNode {
-  if (!hasOwn(operation, "requestBody")) return NEVER;
+  if (!Object.hasOwn(operation, "requestBody")) return NEVER;
 
-  const body = resolveObject(context.document, operation["requestBody"], "requestBodies", pointerTo(pointer, "requestBody"));
+  const body = resolveObject(operation["requestBody"], "requestBodies", context, `${pointer}/requestBody`);
   return convertJsonContent(body.value, context, body.pointer) ?? NEVER;
 }
 
@@ -356,16 +368,16 @@ function convertRequestBody(operation: Record<string, unknown>, context: Endpoin
  *
  * @param operation The operation object.
  * @param context Shared state for the document being converted.
- * @param pointer JSON pointer to the operation.
+ * @param pointer Location of the operation.
  * @returns One property per response.
- * @throws GenerationError If a response cannot be converted.
+ * @throws Error If a response cannot be converted.
  */
 function convertResponses(operation: Record<string, unknown>, context: EndpointContext, pointer: string): PropertyNode[] {
-  const responsesPointer = pointerTo(pointer, "responses");
-  const responses = optionalRecord(operation, "responses", pointer);
+  const responsesPointer = `${pointer}/responses`;
+  const responses = (operation["responses"] ?? {}) as Record<string, unknown>;
 
   return Object.keys(responses).sort(compareStatuses).map((status) => {
-    const response = resolveObject(context.document, responses[status], "responses", pointerTo(responsesPointer, status));
+    const response = resolveObject(responses[status], "responses", context, `${responsesPointer}/${status}`);
     return property(
       status,
       convertResponseBody(response.value, context, response.pointer),
@@ -380,12 +392,12 @@ function convertResponses(operation: Record<string, unknown>, context: EndpointC
  *
  * @param response The response object.
  * @param context Shared state for the document being converted.
- * @param pointer JSON pointer to the response.
+ * @param pointer Location of the response.
  * @returns The JSON body type, `void` if the response has no body, or `unknown` for other content types.
- * @throws GenerationError If the response content cannot be converted.
+ * @throws Error If the response content cannot be converted.
  */
 function convertResponseBody(response: Record<string, unknown>, context: EndpointContext, pointer: string): TypeNode {
-  const content = optionalRecord(response, "content", pointer);
+  const content = (response["content"] ?? {}) as Record<string, unknown>;
   if (Object.keys(content).length === 0) return VOID;
   return convertJsonContent(response, context, pointer) ?? UNKNOWN;
 }
@@ -395,25 +407,67 @@ function convertResponseBody(response: Record<string, unknown>, context: Endpoin
  *
  * @param owner The request body or response object.
  * @param context Shared state for the document being converted.
- * @param pointer JSON pointer to the owner.
+ * @param pointer Location of the owner.
  * @returns The union of the JSON schemas, or `undefined` if there is no JSON content.
- * @throws GenerationError If a media type object or schema is malformed.
+ * @throws Error If a schema cannot be converted.
  */
 function convertJsonContent(owner: Record<string, unknown>, context: EndpointContext, pointer: string): TypeNode | undefined {
-  const contentPointer = pointerTo(pointer, "content");
-  const content = optionalRecord(owner, "content", pointer);
+  const contentPointer = `${pointer}/content`;
+  const content = (owner["content"] ?? {}) as Record<string, unknown>;
 
   const types = Object.entries(content)
     .filter(([mediaType]) => isJsonMediaType(mediaType))
     .map(([mediaType, media]) => {
-      const mediaPointer = pointerTo(contentPointer, mediaType);
-      const mediaObject = expectRecord(media, mediaPointer);
-      return hasOwn(mediaObject, "schema")
-        ? convertSchema(mediaObject["schema"], context.modelNames, pointerTo(mediaPointer, "schema"))
+      const mediaPointer = `${contentPointer}/${mediaType}`;
+      const mediaObject = media as Record<string, unknown>;
+      return Object.hasOwn(mediaObject, "schema")
+        ? convertSchema(mediaObject["schema"], context.modelNames, `${mediaPointer}/schema`)
         : UNKNOWN;
     });
 
   return types.length > 0 ? union(types) : undefined;
+}
+
+/**
+ * Return a parameter, request body, or response object, following `$ref` values until a concrete object is found.
+ *
+ * @param value The object, which may be a reference object.
+ * @param section The components section references must point into.
+ * @param context Shared state for the document being converted.
+ * @param pointer Location of the object.
+ * @returns The resolved object and its location.
+ * @throws Error If a reference does not match a component in the section, or is circular.
+ */
+function resolveObject(
+  value: unknown,
+  section: ResolvedSection,
+  context: EndpointContext,
+  pointer: string,
+): ResolvedObject {
+  const entries = context.document.components?.[section] ?? {};
+  const prefix = `#/components/${section}/`;
+  const visited = new Set<string>();
+
+  let current = value as Record<string, unknown>;
+  let location = pointer;
+  while (Object.hasOwn(current, "$ref")) {
+    const ref = current["$ref"];
+    const refPointer = `${location}/$ref`;
+    const name = typeof ref === "string" && ref.startsWith(prefix) ? ref.slice(prefix.length) : undefined;
+    if (name === undefined || !Object.hasOwn(entries, name)) {
+      throw new Error(`Reference ${JSON.stringify(ref)} does not match any component in \`components.${section}\` at ${refPointer}`);
+    }
+
+    if (visited.has(name)) {
+      throw new Error(`Circular reference to ${JSON.stringify(ref)} at ${refPointer}`);
+    }
+
+    visited.add(name);
+    location = `#/components/${section}/${name}`;
+    current = entries[name] as Record<string, unknown>;
+  }
+
+  return {value: current, pointer: location};
 }
 
 /**

@@ -2,11 +2,14 @@
 
 import { parse } from "yaml";
 
-import { GenerationError } from "../errors.ts";
-import { COMPONENT_SECTIONS, expectRecord, optionalRecord, pointerTo } from "./navigation.ts";
-
 /** Regex matching the supported OpenAPI versions. */
 const SUPPORTED_VERSION = /^3\.[01](?:\.\d+)?$/;
+
+/** Sections of `components` read by the conversion steps, in alphabetical order. */
+const COMPONENT_SECTIONS = ["parameters", "requestBodies", "responses", "schemas"] as const;
+
+/** A section of `components` read by the conversion steps. */
+export type ComponentSection = (typeof COMPONENT_SECTIONS)[number];
 
 /** Metadata about the API described by an OpenAPI document. */
 export interface OpenApiInfo {
@@ -72,6 +75,25 @@ export interface OpenApiDocument {
 }
 
 /**
+ * Parse the YAML or JSON text from an OpenAPI specification.
+ *
+ * @param text The text of an OpenAPI specification.
+ * @returns The parsed and validated content.
+ * @throws Error If the input cannot be parsed or is not a supported OpenAPI document.
+ */
+export function parseOpenApiText(text: string): OpenApiDocument {
+  let value: unknown;
+  try {
+    value = parse(text);
+  } catch (error) {
+    const reason = error instanceof Error ? error.message : String(error);
+    throw new Error(`The document is not valid YAML or JSON: ${reason} at #`);
+  }
+
+  return validateDocument(value);
+}
+
+/**
  * Confirm a file parsing result is a valid OpenAPI document with a supported version.
  *
  * The following properties are checked:
@@ -84,7 +106,7 @@ export interface OpenApiDocument {
  *
  * @param value The value parsed from the document text.
  * @returns The input value, typed as an OpenAPI document.
- * @throws GenerationError If the value is not a valid OpenAPI specification.
+ * @throws Error If the value is not a valid OpenAPI specification.
  */
 function validateDocument(value: unknown): OpenApiDocument {
   const document = expectRecord(value, "#");
@@ -92,19 +114,19 @@ function validateDocument(value: unknown): OpenApiDocument {
   // Confirm the specification version is supported
   const version = document["openapi"];
   if (typeof version !== "string" || !SUPPORTED_VERSION.test(version)) {
-    throw new GenerationError("The provided OpenAPI version is not supported", pointerTo("#", "openapi"));
+    throw new Error("The provided OpenAPI version is not supported at #/openapi");
   }
 
   // Confirm the API metadata shown in the generated header
-  const info = expectRecord(document["info"], pointerTo("#", "info"));
+  const info = expectRecord(document["info"], "#/info");
   if (typeof info["title"] !== "string") {
-    throw new GenerationError("Expected a string", pointerTo("#/info", "title"));
+    throw new Error("Expected a string at #/info/title");
   }
 
   // The specification requires a string, but unquoted YAML versions such as `1.0` parse as numbers
   const apiVersion = info["version"];
   if (typeof apiVersion !== "string" && typeof apiVersion !== "number") {
-    throw new GenerationError("Expected a string", pointerTo("#/info", "version"));
+    throw new Error("Expected a string at #/info/version");
   }
 
   // Confirm the sections iterated over by the conversion steps are objects
@@ -118,20 +140,30 @@ function validateDocument(value: unknown): OpenApiDocument {
 }
 
 /**
- * Parse the YAML or JSON text from an OpenAPI specification.
+ * Return a value as a plain object, or raise an error pointing to its location.
  *
- * @param text The text of an OpenAPI specification.
- * @returns The parsed and validated content.
- * @throws GenerationError If the input cannot be parsed.
+ * @param value The value to check.
+ * @param pointer Location of the value in the document.
+ * @returns The value, typed as a plain object.
+ * @throws Error If the value is not an object other than an array or `null`.
  */
-export function parseOpenApiText(text: string): OpenApiDocument {
-  let value: unknown;
-  try {
-    value = parse(text);
-  } catch (error) {
-    const reason = error instanceof Error ? error.message : String(error);
-    throw new GenerationError(`The document is not valid YAML or JSON: ${reason}`, "#");
+function expectRecord(value: unknown, pointer: string): Record<string, unknown> {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) {
+    throw new Error(`Expected an object at ${pointer}`);
   }
 
-  return validateDocument(value);
+  return value as Record<string, unknown>;
+}
+
+/**
+ * Return an object property that must be an object if present, or an empty object if it is missing.
+ *
+ * @param parent The object containing the property.
+ * @param key The property name.
+ * @param pointer Location of the parent object in the document.
+ * @returns The property value, or an empty object.
+ * @throws Error If the property is present but is not a plain object.
+ */
+function optionalRecord(parent: Record<string, unknown>, key: string, pointer: string): Record<string, unknown> {
+  return Object.hasOwn(parent, key) ? expectRecord(parent[key], `${pointer}/${key}`) : {};
 }

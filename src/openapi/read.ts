@@ -3,12 +3,12 @@
 import { readFileSync } from "node:fs";
 import { basename } from "node:path";
 
-/** The contents and file name for an OpenAPI document. */
+/** Contents and metadata for a text file. */
 export interface FileContent {
-  /** The document contents. */
+  /** The file contents. */
   readonly text: string;
 
-  /** The file name without its directory. */
+  /** The file base name. */
   readonly name: string;
 }
 
