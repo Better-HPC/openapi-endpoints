@@ -11,10 +11,10 @@ import { parseArguments } from "./cli.ts";
 import { deriveEndpoints } from "./generation/endpoints.ts";
 import { deriveModels } from "./generation/models.ts";
 import { deriveModelNames } from "./generation/naming.ts";
-import { renderModule } from "./generation/render.ts";
 import { parseOpenApiText } from "./openapi/parse.ts";
 import { readOpenApiSource } from "./openapi/read.ts";
 import { checkOutput, type OutputStreams, reportError, writeOutput } from "./output.ts";
+import { renderModule } from "./render.ts";
 
 /** Exit code for a successful run. */
 const EXIT_SUCCESS = 0;
@@ -37,12 +37,15 @@ export function main(args: readonly string[], streams: OutputStreams = process):
     const openApiSource = readOpenApiSource(parsedArgs.schema);
     const openApiSpec = parseOpenApiText(openApiSource.text);
 
-    // Generate TypeScript interfaces
-    const modelNameMap = deriveModelNames(openApiSpec);
-    const models = deriveModels(openApiSpec, modelNameMap);
-    const endpoints = deriveEndpoints(openApiSpec, modelNameMap);
-    const code = renderModule(openApiSpec, models, endpoints, openApiSource.name);
+    // Derive TypeScript interfaces
+    const modelNames = deriveModelNames(openApiSpec);
+    const models = deriveModels(openApiSpec, modelNames);
+    const endpoints = deriveEndpoints(openApiSpec, modelNames);
 
+    // Render the declarations as TypeScript source
+    const code = renderModule(models, endpoints, openApiSpec.info, openApiSource.name);
+
+    // Deliver the generated code
     if (parsedArgs.action === "check") {
       const upToDate = checkOutput(code, parsedArgs.output, streams);
       return upToDate ? EXIT_SUCCESS : EXIT_FAILURE;

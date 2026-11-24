@@ -1,4 +1,4 @@
-/** Reading, parsing, and validation for OpenAPI documents. */
+/** Fetching and reading OpenAPI documents. */
 
 import { readFileSync } from "node:fs";
 import { basename } from "node:path";

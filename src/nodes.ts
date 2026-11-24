@@ -4,7 +4,9 @@
  * The conversion steps produce these nodes rather than strings, so unions and
  * intersections can be flattened and deduplicated as they are built, and so
  * parentheses, indentation, and comments are handled in one place by the printer.
- * Nodes are plain objects and are never modified after they are created.
+ * Declarations that rely on features the type nodes do not describe, such as generic
+ * parameters and conditional types, carry fixed TypeScript source instead. Nodes are
+ * plain objects and are never modified after they are created.
  */
 
 /** A TypeScript keyword type used in generated code. */
@@ -28,8 +30,11 @@ export interface PropertyNode {
   readonly docs: readonly string[];
 }
 
-/** A named type exported by the generated module. */
-export interface DeclarationNode {
+/** A named type exported by the generated module, described by a type node. */
+export interface TypeDeclarationNode {
+  /** Discriminator separating declarations built from type nodes and from fixed source. */
+  readonly kind: "type";
+
   /** The name of the declared type. */
   readonly name: string;
 
@@ -39,6 +44,24 @@ export interface DeclarationNode {
   /** Lines of the documentation comment written above the declaration. */
   readonly docs: readonly string[];
 }
+
+/** A named type exported by the generated module, written as fixed TypeScript source. */
+export interface SourceDeclarationNode {
+  /** Discriminator separating declarations built from type nodes and from fixed source. */
+  readonly kind: "source";
+
+  /** The name of the declared type. */
+  readonly name: string;
+
+  /** The TypeScript source of the declaration, including the `export` keyword. */
+  readonly source: string;
+
+  /** Lines of the documentation comment written above the declaration. */
+  readonly docs: readonly string[];
+}
+
+/** A named type exported by the generated module. */
+export type DeclarationNode = TypeDeclarationNode | SourceDeclarationNode;
 
 /** A TypeScript type expression. */
 export type TypeNode =
@@ -143,8 +166,20 @@ export function property(name: string, type: TypeNode, optional = false, docs: r
  * @param docs Lines of the documentation comment written above the declaration.
  * @returns The declaration node.
  */
-export function declaration(name: string, type: TypeNode, docs: readonly string[] = []): DeclarationNode {
-  return {name, type, docs};
+export function declaration(name: string, type: TypeNode, docs: readonly string[] = []): TypeDeclarationNode {
+  return {kind: "type", name, type, docs};
+}
+
+/**
+ * Create a declaration of a named type from fixed TypeScript source.
+ *
+ * @param name The name of the declared type.
+ * @param source The TypeScript source of the declaration, including the `export` keyword.
+ * @param docs Lines of the documentation comment written above the declaration.
+ * @returns The declaration node.
+ */
+export function sourceDeclaration(name: string, source: string, docs: readonly string[] = []): SourceDeclarationNode {
+  return {kind: "source", name, source, docs};
 }
 
 /**

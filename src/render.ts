@@ -1,18 +1,16 @@
 /**
  * Rendering of the generated module as TypeScript source text.
  *
- * The printer is the only part of the generator that produces source text. It writes
- * the header comment, the section labels, a declaration for every model and for the
- * endpoint map, and the fixed helper types. Along the way it adds parentheses where
- * operator precedence requires them, quotes property names that are not valid
- * identifiers, indents nested object types, and escapes documentation text so it
- * cannot terminate a comment early.
+ * The printer turns declaration nodes into source text. It writes the header comment,
+ * the section labels, and a declaration for every model and endpoint type. Along the
+ * way it adds parentheses where operator precedence requires them, quotes property
+ * names that are not valid identifiers, indents nested object types, and escapes
+ * documentation text so it cannot terminate a comment early. Declarations that carry
+ * fixed source are written unchanged below their documentation comment.
  */
 
-import { HELPER_DECLARATIONS } from "../helpers.ts";
-import { isRecord } from "../navigation.ts";
-import type { DeclarationNode, LiteralValue, TypeNode } from "../nodes.ts";
-import type { OpenApiDocument } from "../openapi/parse.ts";
+import type { DeclarationNode, LiteralValue, TypeDeclarationNode, TypeNode } from "./nodes.ts";
+import type { OpenApiInfo } from "./openapi/parse.ts";
 
 /** Name of the generator, shown in the header comment of generated modules. */
 const GENERATOR_NAME = "openapi-endpoints";
@@ -20,11 +18,8 @@ const GENERATOR_NAME = "openapi-endpoints";
 /** Section label written above the model types. */
 const MODELS_LABEL = "// Model types for the schemas in `components.schemas`";
 
-/** Section label written above the endpoint map. */
-const ENDPOINTS_LABEL = "// Request and response types for each operation in `paths`";
-
-/** Section label written above the helper types. */
-const HELPERS_LABEL = "// Helper types for looking up parts of the endpoint map";
+/** Section label written above the endpoint map and its helper types. */
+const ENDPOINTS_LABEL = "// Request and response types for each operation in `paths`, with helper types for looking them up";
 
 /** Indentation used for each nesting level of generated code. */
 const INDENT = "  ";
@@ -38,28 +33,26 @@ const CANONICAL_INTEGER = /^(?:0|[1-9]\d*)$/;
 /**
  * Render the complete TypeScript module for an OpenAPI document.
  *
- * The module contains a header comment, the model types, the endpoint map, and the
- * helper types, in that order. The model section is omitted if there are no models.
+ * The module contains a header comment, the model types, and the endpoint types, in
+ * that order. The model section is omitted if there are no models.
  *
- * @param document The source document, used for the title and version in the header comment.
  * @param models The model type declarations.
- * @param endpoints The declaration of the endpoint map.
+ * @param endpoints The declarations of the endpoint map and its helper types.
+ * @param info Metadata about the API, used for the title and version in the header comment.
  * @param sourceName Name of the source file shown in the header comment.
  * @returns The TypeScript source of the module.
  */
 export function renderModule(
-  document: OpenApiDocument,
   models: readonly DeclarationNode[],
-  endpoints: DeclarationNode,
+  endpoints: readonly DeclarationNode[],
+  info: OpenApiInfo,
   sourceName: string,
 ): string {
   const blocks = [
-    printHeader(document, sourceName),
+    printHeader(info, sourceName),
     ...(models.length > 0 ? [MODELS_LABEL, ...models.map((model) => printDeclaration(model))] : []),
     ENDPOINTS_LABEL,
-    printDeclaration(endpoints),
-    HELPERS_LABEL,
-    ...HELPER_DECLARATIONS.map((helper) => `${printDocComment(helper.docs)}\n${helper.source}`),
+    ...endpoints.map((endpoint) => printDeclaration(endpoint)),
   ];
 
   return `${blocks.join("\n\n")}\n`;
@@ -68,21 +61,15 @@ export function renderModule(
 /**
  * Render the header comment of a generated module.
  *
- * @param document The source document.
+ * @param info Metadata about the API.
  * @param sourceName Name of the source file.
  * @returns The TypeScript source of the header comment.
  */
-function printHeader(document: OpenApiDocument, sourceName: string): string {
-  const info = isRecord(document["info"]) ? document["info"] : {};
-  const title = typeof info["title"] === "string" && info["title"].trim() !== ""
-    ? info["title"].trim()
-    : "an OpenAPI document";
-
-  const version = info["version"];
-  const versionText = typeof version === "string" || typeof version === "number" ? ` (version ${version})` : "";
+function printHeader(info: OpenApiInfo, sourceName: string): string {
+  const title = info.title.trim() || "an OpenAPI document";
 
   return printDocComment([
-    `TypeScript definitions for ${title}${versionText}.`,
+    `TypeScript definitions for ${title} (version ${info.version}).`,
     "",
     `This module was generated by ${GENERATOR_NAME} from \`${sourceName}\`. Do not edit`,
     "it directly, because changes are lost the next time it is generated.",
@@ -90,21 +77,30 @@ function printHeader(document: OpenApiDocument, sourceName: string): string {
 }
 
 /**
- * Render an exported declaration for a named type.
- *
- * Object types are declared as interfaces and all other types as type aliases.
+ * Render an exported declaration for a named type, preceded by its documentation comment.
  *
  * @param declaration The declaration to render.
  * @returns The TypeScript source for the declaration.
  */
 function printDeclaration(declaration: DeclarationNode): string {
-  const {name, type, docs} = declaration;
-  const source = type.kind === "object"
+  const source = declaration.kind === "source" ? declaration.source : printTypeDeclaration(declaration);
+  const comment = printDocComment(declaration.docs);
+  return comment ? `${comment}\n${source}` : source;
+}
+
+/**
+ * Render a declaration built from a type node.
+ *
+ * Object types are declared as interfaces and all other types as type aliases.
+ *
+ * @param declaration The declaration to render.
+ * @returns The TypeScript source for the declaration, without its documentation comment.
+ */
+function printTypeDeclaration(declaration: TypeDeclarationNode): string {
+  const {name, type} = declaration;
+  return type.kind === "object"
     ? `export interface ${name} ${printObject(type, 0)}`
     : `export type ${name} = ${printType(type, 0)};`;
-
-  const comment = printDocComment(docs);
-  return comment ? `${comment}\n${source}` : source;
 }
 
 /**

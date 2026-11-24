@@ -1,9 +1,9 @@
-/** Name generation for dynamic TypeScript types fromOpenApi Schemas. */
+/** Name generation for the model types declared for OpenAPI schemas. */
 
 import { GenerationError } from "../errors.ts";
-import { GENERATED_NAMES } from "../helpers.ts";
-import { pointerTo, readComponents } from "../navigation.ts";
+import { pointerTo } from "../openapi/navigation.ts";
 import type { OpenApiDocument } from "../openapi/parse.ts";
+import { ENDPOINT_TYPE_NAMES } from "./endpoints.ts";
 
 /** Maps OpenAPI schema names to TypeScript names. */
 export type ModelNameMap = ReadonlyMap<string, string>;
@@ -14,7 +14,7 @@ const IDENTIFIER = /^[A-Za-z_$][A-Za-z0-9_$]*$/;
 /** Pattern matching invalid characters in TypeScript identifiers. */
 const NON_IDENTIFIER_CHARACTERS = /[^A-Za-z0-9_$]+/;
 
-/** Reserved names that cannot be used for a TypeScript types and interfaces. */
+/** Reserved names that cannot be used for TypeScript types and interfaces. */
 const RESERVED_TYPE_NAMES: ReadonlySet<string> = new Set([
   // Reserved words
   "await", "break", "case", "catch", "class", "const", "continue", "debugger", "default",
@@ -32,7 +32,7 @@ const RESERVED_TYPE_NAMES: ReadonlySet<string> = new Set([
  *
  * Schemas are read from the `components.schemas` section of the specification.
  * An error is thrown if any generated name results in a duplicate or conflicts
- * with builtin types or names reserved by the parent application.
+ * with builtin types or the names declared by the endpoints step.
  *
  * @param openApiSpec The parsed OpenAPI specification.
  * @returns A mapping from schema name to type name.
@@ -42,13 +42,13 @@ export function deriveModelNames(openApiSpec: OpenApiDocument): ModelNameMap {
   const typeNames = new Map<string, string>();
   const schemaNamesByTypeName = new Map<string, string>();
 
-  for (const schemaName of Object.keys(readComponents(openApiSpec, "schemas")).sort()) {
+  for (const schemaName of Object.keys(openApiSpec.components?.schemas ?? {}).sort()) {
     // Create type name
     const pointer = pointerTo("#/components/schemas", schemaName);
     const typeName = toIdentifier(schemaName, pointer);
 
     // Ensure type name does not conflict with reserved names
-    if (RESERVED_TYPE_NAMES.has(typeName) || GENERATED_NAMES.has(typeName)) {
+    if (RESERVED_TYPE_NAMES.has(typeName) || ENDPOINT_TYPE_NAMES.has(typeName)) {
       throw new GenerationError(`Schema name ${JSON.stringify(schemaName)} conflicts with a reserved type name`, pointer);
     }
 
@@ -61,6 +61,7 @@ export function deriveModelNames(openApiSpec: OpenApiDocument): ModelNameMap {
       );
     }
 
+    // Store generated name
     schemaNamesByTypeName.set(typeName, schemaName);
     typeNames.set(schemaName, typeName);
   }

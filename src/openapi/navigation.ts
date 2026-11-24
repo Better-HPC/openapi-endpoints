@@ -1,18 +1,13 @@
-/**
- * Utilities for reading and navigating OpenAPI documents.
- *
- * Every step that reads the document treats it as untrusted input and checks values
- * as they are read, reporting problems as a `GenerationError` that points to the
- * offending location. This module provides those checks, along with JSON pointer
- * construction and the resolution of references to `components`. It is shared by
- * every step, so it depends on nothing but the error types.
- */
+/** Utilities for reading and navigating OpenAPI documents. */
 
-import { GenerationError } from "./errors.ts";
-import type { OpenApiDocument } from "./openapi/parse.ts";
+import { GenerationError } from "../errors.ts";
+import type { OpenApiDocument } from "./parse.ts";
+
+/** Sections of `components` that can be the target of a reference, in alphabetical order. */
+export const COMPONENT_SECTIONS = ["parameters", "requestBodies", "responses", "schemas"] as const;
 
 /** A section of `components` that can be the target of a reference. */
-export type ComponentSection = "parameters" | "requestBodies" | "responses" | "schemas";
+export type ComponentSection = (typeof COMPONENT_SECTIONS)[number];
 
 /** A document object with any references to other components resolved. */
 export interface ResolvedObject {
@@ -80,18 +75,6 @@ export function optionalRecord(parent: Record<string, unknown>, key: string, poi
 }
 
 /**
- * Return one section of `components`, or an empty object if the document does not define it.
- *
- * @param document The document containing the components.
- * @param section The components section to return.
- * @returns The components in the section, keyed by component name.
- * @throws GenerationError If `components` or the section is present but is not a plain object.
- */
-export function readComponents(document: OpenApiDocument, section: ComponentSection): Record<string, unknown> {
-  return optionalRecord(optionalRecord(document, "components", "#"), section, "#/components");
-}
-
-/**
  * Build a JSON pointer by appending segments to an existing pointer.
  *
  * @param base The pointer to extend, such as `#` for the document root.
@@ -149,7 +132,7 @@ export function resolveObject(
   section: ComponentSection,
   pointer: string,
 ): ResolvedObject {
-  const entries = readComponents(document, section);
+  const entries = document.components?.[section] ?? {};
   const visited = new Set<string>();
 
   let current = expectRecord(value, pointer);

@@ -10,8 +10,6 @@
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname } from "node:path";
 
-import { isRecord } from "./navigation.ts";
-
 /** Streams the command line interface writes output and messages to. */
 export interface OutputStreams {
   /** Destination for generated code and status messages. */
@@ -82,7 +80,7 @@ function readOptionalFile(path: string): string | undefined {
   try {
     return readFileSync(path, "utf8");
   } catch (error) {
-    if (isRecord(error) && error["code"] === "ENOENT") return undefined;
+    if (error instanceof Error && "code" in error && error.code === "ENOENT") return undefined;
     throw error;
   }
 }

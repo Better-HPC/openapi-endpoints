@@ -1,25 +1,20 @@
 /**
- * Endpoint map declaration built from the operations in `paths`.
+ * Endpoint map and helper type declarations built from the operations in `paths`.
  *
  * Every path in the document becomes a property of the generated `Endpoints`
  * interface, with one entry per HTTP method. Each entry describes the operation's
  * path parameters, query parameters, JSON request body, and JSON responses. Header
  * and cookie parameters are not included, and content types other than JSON are
  * described as `unknown`.
+ *
+ * The endpoint map is followed by helper types for looking up parts of it, such as
+ * the response body for a path and HTTP method. The helpers rely on mapped and
+ * conditional types that the type nodes do not describe, so they are declared as
+ * fixed source. The names of the map and the helpers are reserved, and the naming
+ * step rejects schemas whose model type would conflict with them.
  */
 
 import { GenerationError } from "../errors.ts";
-import type { OpenApiDocument } from "../openapi/parse.ts";
-import type { ModelNameMap } from "./naming.ts";
-import {
-  expectRecord,
-  hasOwn,
-  HTTP_METHODS,
-  optionalRecord,
-  pointerTo,
-  resolveObject,
-
-} from "../navigation.ts";
 import {
   buildDocs,
   declaration,
@@ -28,12 +23,24 @@ import {
   objectOf,
   property,
   type PropertyNode,
+  sourceDeclaration,
+  type SourceDeclarationNode,
   type TypeNode,
   union,
   UNKNOWN,
   VOID,
 } from "../nodes.ts";
-import { convertSchema, type GeneratorContext } from "./schemas.ts";
+import {
+  expectRecord,
+  hasOwn,
+  HTTP_METHODS,
+  optionalRecord,
+  pointerTo,
+  resolveObject,
+} from "../openapi/navigation.ts";
+import type { OpenApiDocument } from "../openapi/parse.ts";
+import { convertSchema } from "./models.ts";
+import type { ModelNameMap } from "./naming.ts";
 
 /** Name of the declared endpoint map. */
 const ENDPOINTS_NAME = "Endpoints";
@@ -52,6 +59,71 @@ const SUCCESS_STATUS = /^2(?:\d\d|XX)$/i;
 /** Pattern matching response status keys for a range of status codes, such as `4XX`. */
 const STATUS_RANGE = /^[1-5]XX$/i;
 
+/** Helper types declared after the endpoint map. */
+const HELPER_DECLARATIONS: readonly SourceDeclarationNode[] = [
+  sourceDeclaration(
+    "HttpMethod",
+    `export type HttpMethod = ${HTTP_METHODS.map((method) => JSON.stringify(method)).join(" | ")};`,
+    ["An HTTP method that can define an operation."],
+  ),
+  sourceDeclaration(
+    "EndpointPath",
+    `export type EndpointPath = keyof ${ENDPOINTS_NAME} & string;`,
+    ["A path defined in the endpoint map."],
+  ),
+  sourceDeclaration(
+    "EndpointMethod",
+    `export type EndpointMethod<P extends EndpointPath> = keyof ${ENDPOINTS_NAME}[P] & HttpMethod;`,
+    ["An HTTP method that defines an operation on the given path."],
+  ),
+  sourceDeclaration(
+    "EndpointPathsWith",
+    [
+      "export type EndpointPathsWith<M extends HttpMethod> = {",
+      `  [P in EndpointPath]: M extends keyof ${ENDPOINTS_NAME}[P] ? P : never;`,
+      "}[EndpointPath];",
+    ].join("\n"),
+    ["Paths that define an operation for the given HTTP method."],
+  ),
+  sourceDeclaration(
+    "EndpointOperation",
+    [
+      "export type EndpointOperation<P extends EndpointPath, M extends HttpMethod> =",
+      `  M extends keyof ${ENDPOINTS_NAME}[P] ? ${ENDPOINTS_NAME}[P][M] : never;`,
+    ].join("\n"),
+    ["The operation for the given path and HTTP method, or `never` if it is not defined."],
+  ),
+  operationPartHelper("EndpointPathParams", "path", "Path parameters for the given path and HTTP method."),
+  operationPartHelper("EndpointQueryParams", "query", "Query parameters for the given path and HTTP method."),
+  operationPartHelper("EndpointRequestBody", "body", "JSON request body for the given path and HTTP method."),
+  operationPartHelper("EndpointResponse", "response", "Successful response body for the given path and HTTP method."),
+  sourceDeclaration(
+    "EndpointStatusResponse",
+    [
+      "export type EndpointStatusResponse<P extends EndpointPath, M extends HttpMethod, S extends number | string> =",
+      `  M extends keyof ${ENDPOINTS_NAME}[P]`,
+      `    ? (${ENDPOINTS_NAME}[P][M] extends { responses: infer R } ? (S extends keyof R ? R[S] : never) : never)`,
+      "    : never;",
+    ].join("\n"),
+    ["Response body for the given path, HTTP method, and response status."],
+  ),
+];
+
+/** Names of the types declared by this step, which model types cannot use. */
+export const ENDPOINT_TYPE_NAMES: ReadonlySet<string> = new Set([
+  ENDPOINTS_NAME,
+  ...HELPER_DECLARATIONS.map((helper) => helper.name),
+]);
+
+/** Shared state used while converting the operations in a document. */
+interface EndpointContext {
+  /** The document being converted. */
+  readonly document: OpenApiDocument;
+
+  /** TypeScript type names for the schemas in `components.schemas`, keyed by schema name. */
+  readonly modelNames: ModelNameMap;
+}
+
 /** A parameter definition with references resolved. */
 interface Parameter {
   /** The parameter name. */
@@ -68,21 +140,21 @@ interface Parameter {
 }
 
 /**
- * Convert every operation in the document into the declaration of the `Endpoints` map.
+ * Convert every operation in the document into the `Endpoints` map, followed by its helper types.
  *
  * @param document The document being converted.
  * @param modelNames TypeScript type names for the schemas in `components.schemas`, keyed by schema name.
- * @returns The `Endpoints` declaration, with one property per path, sorted by path.
+ * @returns The `Endpoints` declaration, with one property per path sorted by path, then the helper declarations.
  * @throws GenerationError If a path, operation, or schema cannot be converted.
  */
-export function deriveEndpoints(document: OpenApiDocument, modelNames: ModelNameMap): DeclarationNode {
-  const context: GeneratorContext = {document, modelNames};
-  const paths = optionalRecord(document, "paths", "#");
+export function deriveEndpoints(document: OpenApiDocument, modelNames: ModelNameMap): DeclarationNode[] {
+  const context: EndpointContext = {document, modelNames};
+  const paths = document.paths ?? {};
   const properties = Object.keys(paths).sort().map((path) => {
     return property(path, convertPathItem(paths[path], context, pointerTo("#/paths", path)));
   });
 
-  return declaration(ENDPOINTS_NAME, objectOf(properties), ENDPOINTS_DOCS);
+  return [declaration(ENDPOINTS_NAME, objectOf(properties), ENDPOINTS_DOCS), ...HELPER_DECLARATIONS];
 }
 
 /**
@@ -94,7 +166,7 @@ export function deriveEndpoints(document: OpenApiDocument, modelNames: ModelName
  * @returns The object type describing the operations on the path.
  * @throws GenerationError If the path item is a reference or contains invalid operations.
  */
-function convertPathItem(value: unknown, context: GeneratorContext, pointer: string): TypeNode {
+function convertPathItem(value: unknown, context: EndpointContext, pointer: string): TypeNode {
   const item = expectRecord(value, pointer);
   if (hasOwn(item, "$ref")) {
     throw new GenerationError("Path item references are not supported", pointerTo(pointer, "$ref"));
@@ -128,7 +200,7 @@ function convertPathItem(value: unknown, context: GeneratorContext, pointer: str
 function convertOperation(
   operation: Record<string, unknown>,
   sharedParameters: readonly Parameter[],
-  context: GeneratorContext,
+  context: EndpointContext,
   pointer: string,
 ): TypeNode {
   const parameters = mergeParameters(sharedParameters, readParameters(operation, context, pointer));
@@ -163,7 +235,7 @@ function operationDocs(operation: Record<string, unknown>): string[] {
  * @returns The parameters in the order they are listed.
  * @throws GenerationError If the parameter list or a parameter is malformed.
  */
-function readParameters(owner: Record<string, unknown>, context: GeneratorContext, pointer: string): Parameter[] {
+function readParameters(owner: Record<string, unknown>, context: EndpointContext, pointer: string): Parameter[] {
   if (!hasOwn(owner, "parameters")) return [];
 
   const listPointer = pointerTo(pointer, "parameters");
@@ -216,7 +288,7 @@ function mergeParameters(shared: readonly Parameter[], own: readonly Parameter[]
 function convertParameters(
   parameters: readonly Parameter[],
   location: "path" | "query",
-  context: GeneratorContext,
+  context: EndpointContext,
 ): TypeNode {
   const properties: PropertyNode[] = parameters
     .filter((parameter) => parameter.location === location)
@@ -241,10 +313,10 @@ function convertParameters(
  * @returns The parameter type, or `unknown` if the parameter does not define a schema.
  * @throws GenerationError If the parameter schema cannot be converted.
  */
-function convertParameterType(parameter: Parameter, context: GeneratorContext): TypeNode {
+function convertParameterType(parameter: Parameter, context: EndpointContext): TypeNode {
   const {definition, pointer} = parameter;
   if (hasOwn(definition, "schema")) {
-    return convertSchema(definition["schema"], context, pointerTo(pointer, "schema"));
+    return convertSchema(definition["schema"], context.modelNames, pointerTo(pointer, "schema"));
   }
 
   // Parameters may describe their value with a single media type instead of a schema
@@ -257,7 +329,7 @@ function convertParameterType(parameter: Parameter, context: GeneratorContext): 
   const mediaPointer = pointerTo(contentPointer, mediaType);
   const mediaObject = expectRecord(media, mediaPointer);
   return hasOwn(mediaObject, "schema")
-    ? convertSchema(mediaObject["schema"], context, pointerTo(mediaPointer, "schema"))
+    ? convertSchema(mediaObject["schema"], context.modelNames, pointerTo(mediaPointer, "schema"))
     : UNKNOWN;
 }
 
@@ -270,7 +342,7 @@ function convertParameterType(parameter: Parameter, context: GeneratorContext): 
  * @returns The request body type, or `never` if the operation does not accept a JSON body.
  * @throws GenerationError If the request body cannot be converted.
  */
-function convertRequestBody(operation: Record<string, unknown>, context: GeneratorContext, pointer: string): TypeNode {
+function convertRequestBody(operation: Record<string, unknown>, context: EndpointContext, pointer: string): TypeNode {
   if (!hasOwn(operation, "requestBody")) return NEVER;
 
   const body = resolveObject(context.document, operation["requestBody"], "requestBodies", pointerTo(pointer, "requestBody"));
@@ -288,7 +360,7 @@ function convertRequestBody(operation: Record<string, unknown>, context: Generat
  * @returns One property per response.
  * @throws GenerationError If a response cannot be converted.
  */
-function convertResponses(operation: Record<string, unknown>, context: GeneratorContext, pointer: string): PropertyNode[] {
+function convertResponses(operation: Record<string, unknown>, context: EndpointContext, pointer: string): PropertyNode[] {
   const responsesPointer = pointerTo(pointer, "responses");
   const responses = optionalRecord(operation, "responses", pointer);
 
@@ -312,7 +384,7 @@ function convertResponses(operation: Record<string, unknown>, context: Generator
  * @returns The JSON body type, `void` if the response has no body, or `unknown` for other content types.
  * @throws GenerationError If the response content cannot be converted.
  */
-function convertResponseBody(response: Record<string, unknown>, context: GeneratorContext, pointer: string): TypeNode {
+function convertResponseBody(response: Record<string, unknown>, context: EndpointContext, pointer: string): TypeNode {
   const content = optionalRecord(response, "content", pointer);
   if (Object.keys(content).length === 0) return VOID;
   return convertJsonContent(response, context, pointer) ?? UNKNOWN;
@@ -327,7 +399,7 @@ function convertResponseBody(response: Record<string, unknown>, context: Generat
  * @returns The union of the JSON schemas, or `undefined` if there is no JSON content.
  * @throws GenerationError If a media type object or schema is malformed.
  */
-function convertJsonContent(owner: Record<string, unknown>, context: GeneratorContext, pointer: string): TypeNode | undefined {
+function convertJsonContent(owner: Record<string, unknown>, context: EndpointContext, pointer: string): TypeNode | undefined {
   const contentPointer = pointerTo(pointer, "content");
   const content = optionalRecord(owner, "content", pointer);
 
@@ -337,7 +409,7 @@ function convertJsonContent(owner: Record<string, unknown>, context: GeneratorCo
       const mediaPointer = pointerTo(contentPointer, mediaType);
       const mediaObject = expectRecord(media, mediaPointer);
       return hasOwn(mediaObject, "schema")
-        ? convertSchema(mediaObject["schema"], context, pointerTo(mediaPointer, "schema"))
+        ? convertSchema(mediaObject["schema"], context.modelNames, pointerTo(mediaPointer, "schema"))
         : UNKNOWN;
     });
 
@@ -391,4 +463,21 @@ function statusRank(status: string): number {
   if (/^\d{3}$/.test(status)) return Number(status);
   if (STATUS_RANGE.test(status)) return Number(status.charAt(0)) * 100 + 99.5;
   return status === "default" ? 1000 : 1001;
+}
+
+/**
+ * Build a helper type that extracts one part of an operation from the endpoint map.
+ *
+ * @param name The name of the helper type.
+ * @param key The operation property the helper extracts.
+ * @param description A one sentence description of the extracted part.
+ * @returns The helper declaration.
+ */
+function operationPartHelper(name: string, key: string, description: string): SourceDeclarationNode {
+  const source = [
+    `export type ${name}<P extends EndpointPath, M extends HttpMethod> =`,
+    `  M extends keyof ${ENDPOINTS_NAME}[P] ? (${ENDPOINTS_NAME}[P][M] extends { ${key}: infer T } ? T : never) : never;`,
+  ].join("\n");
+
+  return sourceDeclaration(name, source, [description.replace(/\.$/, ", or `never` if the operation does not define it.")]);
 }
