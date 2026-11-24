@@ -4,7 +4,7 @@ import { readFileSync } from "node:fs";
 import { basename } from "node:path";
 
 /** The contents and file name for an OpenAPI document. */
-export interface SourceText {
+export interface FileContent {
   /** The document contents. */
   readonly text: string;
 
@@ -19,6 +19,6 @@ export interface SourceText {
  * @returns The document contents and file name.
  * @throws Error If the file cannot be read.
  */
-export function readOpenApiSource(path: string): SourceText {
+export function readOpenApiSource(path: string): FileContent {
   return {text: readFileSync(path, "utf8"), name: basename(path)};
 }
