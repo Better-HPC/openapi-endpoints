@@ -12,7 +12,8 @@ import { deriveEndpoints } from "./generation/endpoints.ts";
 import { deriveModels } from "./generation/models.ts";
 import { deriveModelNames } from "./generation/naming.ts";
 import { renderModule } from "./generation/render.ts";
-import { parseOpenApiText, readOpenApiSource } from "./openapi.ts";
+import { parseOpenApiText } from "./openapi/parse.ts";
+import { readOpenApiSource } from "./openapi/read.ts";
 import { checkOutput, type OutputStreams, reportError, writeOutput } from "./output.ts";
 
 /** Exit code for a successful run. */
@@ -32,9 +33,11 @@ export function main(args: readonly string[], streams: OutputStreams = process):
   const parsedArgs = parseArguments(args);
 
   try {
+    // Fetch and parse the openapi specification
     const openApiSource = readOpenApiSource(parsedArgs.schema);
     const openApiSpec = parseOpenApiText(openApiSource.text);
 
+    // Generate TypeScript interfaces
     const modelNameMap = deriveModelNames(openApiSpec);
     const models = deriveModels(openApiSpec, modelNameMap);
     const endpoints = deriveEndpoints(openApiSpec, modelNameMap);
