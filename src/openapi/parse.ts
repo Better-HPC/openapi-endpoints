@@ -1,12 +1,20 @@
 /** Reading, parsing, and validation for OpenAPI documents. */
 
 import { parse } from "yaml";
+import { expectRecord, pointerTo } from "../navigation.ts";
 
-import { GenerationError } from "./errors.ts";
-import { expectRecord, OpenApiDocument, pointerTo } from "../navigation.ts";
+import { GenerationError } from "../errors.ts";
 
 /** Regex matching the supported OpenAPI versions. */
 const SUPPORTED_VERSION = /^3\.[01](?:\.\d+)?$/;
+
+/** A parsed OpenAPI 3.0 or 3.1 document. */
+export interface OpenApiDocument {
+  /** The version of the OpenAPI specification used by the document. */
+  readonly openapi: string;
+
+  readonly [key: string]: unknown;
+}
 
 /**
  * Parse the YAML or JSON text from an OpenAPI specification.

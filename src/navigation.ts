@@ -9,14 +9,7 @@
  */
 
 import { GenerationError } from "./errors.ts";
-
-/** A parsed OpenAPI 3.0 or 3.1 document. */
-export interface OpenApiDocument {
-  /** The version of the OpenAPI specification used by the document. */
-  readonly openapi: string;
-
-  readonly [key: string]: unknown;
-}
+import type { OpenApiDocument } from "./openapi/parse.ts";
 
 /** A section of `components` that can be the target of a reference. */
 export type ComponentSection = "parameters" | "requestBodies" | "responses" | "schemas";

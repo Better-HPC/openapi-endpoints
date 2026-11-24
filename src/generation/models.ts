@@ -7,8 +7,9 @@
  * shared schema converter that also handles schemas inside operations.
  */
 import { GenerationError } from "../errors.ts";
-import { type OpenApiDocument, pointerTo, readComponents } from "../navigation.ts";
+import { pointerTo, readComponents } from "../navigation.ts";
 import { declaration, type DeclarationNode } from "../nodes.ts";
+import type { OpenApiDocument } from "../openapi/parse.ts";
 import type { ModelNameMap } from "./naming.ts";
 import { convertSchema, type GeneratorContext, schemaDocs } from "./schemas.ts";
 

@@ -10,8 +10,9 @@
  */
 
 import { HELPER_DECLARATIONS } from "../helpers.ts";
-import { isRecord, type OpenApiDocument } from "../navigation.ts";
+import { isRecord } from "../navigation.ts";
 import type { DeclarationNode, LiteralValue, TypeNode } from "../nodes.ts";
+import type { OpenApiDocument } from "../openapi/parse.ts";
 
 /** Name of the generator, shown in the header comment of generated modules. */
 const GENERATOR_NAME = "openapi-endpoints";

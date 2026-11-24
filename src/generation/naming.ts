@@ -2,8 +2,8 @@
 
 import { GenerationError } from "../errors.ts";
 import { GENERATED_NAMES } from "../helpers.ts";
-import { type OpenApiDocument, pointerTo, readComponents } from "../navigation.ts";
-import type { ModelNameMap } from "./naming.ts";
+import { pointerTo, readComponents } from "../navigation.ts";
+import type { OpenApiDocument } from "../openapi/parse.ts";
 
 /** Maps OpenAPI schema names to TypeScript names. */
 export type ModelNameMap = ReadonlyMap<string, string>;

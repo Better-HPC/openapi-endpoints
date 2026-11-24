@@ -9,6 +9,7 @@
  */
 
 import { GenerationError } from "../errors.ts";
+import type { OpenApiDocument } from "../openapi/parse.ts";
 import type { ModelNameMap } from "./naming.ts";
 import {
   expectRecord,
@@ -17,7 +18,7 @@ import {
   optionalRecord,
   pointerTo,
   resolveObject,
-  type OpenApiDocument,
+
 } from "../navigation.ts";
 import {
   buildDocs,
