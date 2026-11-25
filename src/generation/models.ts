@@ -1,44 +1,7 @@
-/**
- * Model type declarations for the schemas in `components.schemas`.
- *
- * Each schema becomes a declaration named after the schema, so other generated types
- * can refer to models by name and applications can import them directly. The names
- * are chosen beforehand by the naming step. The schema converter defined here is also
- * used by the endpoints step for schemas inside operations.
- *
- * The converter supports the parts of OpenAPI 3.0 and 3.1 schemas used to describe
- * JSON data, which covers the output of common generators such as drf-spectacular.
- * Keywords that would change the meaning of a schema but are not supported raise an
- * error instead of being ignored, so documents using unsupported features fail loudly
- * rather than producing incorrect types. Keywords that only annotate or validate
- * values, such as `description` or `maxLength`, do not affect the generated type.
- *
- * The document is trusted to be structurally valid OpenAPI. Schemas are read as
- * objects without checking, so the converter does not diagnose invalid documents.
- * Errors give their location as a path from the document root, such as
- * `#/components/schemas/Team/properties/name`, with property names written unescaped.
- */
+/** Derivation of dynamic TypeScript types from OpenAPI schemas. */
 
-import {
-  arrayOf,
-  BOOLEAN,
-  buildDocs,
-  declaration,
-  type DeclarationNode,
-  intersection,
-  literal,
-  NEVER,
-  NULL,
-  NUMBER,
-  objectOf,
-  property,
-  reference,
-  STRING,
-  type TypeNode,
-  union,
-  UNKNOWN,
-} from "../render.ts";
 import type { OpenApiDocument } from "../openapi/parse.ts";
+import { arrayOf, BOOLEAN, buildDocs, declaration, type DeclarationNode, intersection, literal, NEVER, NULL, NUMBER, objectOf, property, reference, STRING, type TypeNode, union, UNKNOWN, } from "../render.ts";
 import type { ModelNameMap } from "./naming.ts";
 
 /** Prefix of a `$ref` value that points to a schema in `components.schemas`. */
@@ -95,24 +58,27 @@ const ANNOTATION_KEYWORDS: ReadonlySet<string> = new Set([
 /** Schema keywords that describe the structure of a value when present without `enum` or `const`. */
 const STRUCTURE_KEYWORDS = ["additionalProperties", "items", "properties", "required", "type"] as const;
 
+/** Schema keywords that imply an object type when `type` is missing. */
+const OBJECT_KEYWORDS = ["additionalProperties", "properties", "required"] as const;
+
 /** Schema keywords that combine a list of subschemas. */
 type CompositionKeyword = "allOf" | "anyOf" | "oneOf";
 
 /**
  * Convert every schema in `components.schemas` into a model type declaration.
  *
- * @param document The document being converted.
+ * @param openApiSpec The parsed OpenAPI specification.
  * @param modelNames TypeScript type names for the schemas, keyed by schema name.
  * @returns One declaration per schema, in the order of `modelNames`.
  * @throws Error If a schema cannot be converted.
  */
-export function deriveModels(document: OpenApiDocument, modelNames: ModelNameMap): DeclarationNode[] {
-  const schemas = document.components?.schemas ?? {};
+export function deriveModels(openApiSpec: OpenApiDocument, modelNames: ModelNameMap): DeclarationNode[] {
+  const schemas = openApiSpec.components?.schemas ?? {};
 
-  return [...modelNames].map(([name, identifier]) => {
-    const schema = schemas[name];
-    const type = convertSchema(schema, modelNames, `#/components/schemas/${name}`);
-    return declaration(identifier, type, schemaDocs(schema));
+  return [...modelNames].map(([schemaName, typeName]) => {
+    const schema = schemas[schemaName];
+    const type = convertSchema(schema, modelNames, `#/components/schemas/${schemaName}`);
+    return declaration(typeName, type, schemaDocs(schema));
   });
 }
 
@@ -122,6 +88,8 @@ export function deriveModels(document: OpenApiDocument, modelNames: ModelNameMap
  * Every applicable keyword contributes a part of the type: references, `allOf`
  * intersections, `oneOf` and `anyOf` unions, and either the enumerated values or
  * the declared structure. The parts are intersected, and `nullable` adds `null`.
+ * The schema is assumed to be structurally valid OpenAPI, so only the keywords that
+ * affect the generated type are checked.
  *
  * @param schema The schema to convert, which may be a boolean schema in OpenAPI 3.1.
  * @param modelNames TypeScript type names for the schemas in `components.schemas`, keyed by schema name.
@@ -131,57 +99,77 @@ export function deriveModels(document: OpenApiDocument, modelNames: ModelNameMap
  */
 export function convertSchema(schema: unknown, modelNames: ModelNameMap, pointer: string): TypeNode {
   // OpenAPI 3.1 allows boolean schemas that accept any value or no value
-  if (schema === true) return UNKNOWN;
-  if (schema === false) return NEVER;
-
-  const object = schema as Record<string, unknown>;
-  validateKeywords(object, pointer);
-
-  const parts: TypeNode[] = [];
-  if (Object.hasOwn(object, "$ref")) {
-    parts.push(convertReference(object["$ref"], modelNames, `${pointer}/$ref`));
+  if (schema === true) {
+    return UNKNOWN;
   }
 
-  if (Object.hasOwn(object, "allOf")) {
-    parts.push(intersection(convertMembers(object, "allOf", modelNames, pointer)));
+  if (schema === false) {
+    return NEVER;
+  }
+
+  const schemaObject = schema as Record<string, unknown>;
+  validateKeywords(schemaObject, pointer);
+
+  // Collect references and compositions of other schemas
+  const parts: TypeNode[] = [];
+  if (Object.hasOwn(schemaObject, "$ref")) {
+    parts.push(convertReference(schemaObject["$ref"], modelNames, `${pointer}/$ref`));
+  }
+
+  if (Object.hasOwn(schemaObject, "allOf")) {
+    parts.push(intersection(convertMembers(schemaObject, "allOf", modelNames, pointer)));
   }
 
   for (const keyword of ["oneOf", "anyOf"] as const) {
-    if (Object.hasOwn(object, keyword)) {
-      parts.push(union(convertMembers(object, keyword, modelNames, pointer)));
+    if (Object.hasOwn(schemaObject, keyword)) {
+      parts.push(union(convertMembers(schemaObject, keyword, modelNames, pointer)));
     }
   }
 
   // Enumerated values are more specific than the declared type, so they take precedence
-  if (Object.hasOwn(object, "const")) {
-    parts.push(convertLiteral(object["const"], `${pointer}/const`));
-  } else if (Object.hasOwn(object, "enum")) {
-    parts.push(convertEnum(object["enum"], `${pointer}/enum`));
-  } else if (STRUCTURE_KEYWORDS.some((keyword) => Object.hasOwn(object, keyword))) {
-    parts.push(convertStructure(object, modelNames, pointer));
+  if (Object.hasOwn(schemaObject, "const")) {
+    parts.push(convertLiteral(schemaObject["const"], `${pointer}/const`));
+  } else if (Object.hasOwn(schemaObject, "enum")) {
+    parts.push(convertEnum(schemaObject["enum"], `${pointer}/enum`));
+  } else if (STRUCTURE_KEYWORDS.some((keyword) => Object.hasOwn(schemaObject, keyword))) {
+    parts.push(convertStructure(schemaObject, modelNames, pointer));
   }
 
-  const node = intersection(parts);
-  return isNullable(object, pointer) ? union([node, NULL]) : node;
+  // Combine the parts and apply the OpenAPI 3.0 `nullable` keyword
+  const type = intersection(parts);
+  return isNullable(schemaObject, pointer) ? union([type, NULL]) : type;
 }
 
 /**
  * Return the documentation comment lines describing a schema.
  *
+ * The lines contain the schema description, followed by `@format`, `@default`, and
+ * `@deprecated` tags where they apply. Boolean schemas have no keywords to document,
+ * so they produce no lines.
+ *
  * @param schema The schema to describe.
- * @returns The schema description followed by `@format`, `@default`, and `@deprecated` tags where applicable.
+ * @returns The documentation comment lines.
  */
 function schemaDocs(schema: unknown): string[] {
-  // Boolean schemas have no keywords to document
-  if (typeof schema === "boolean") return [];
+  if (typeof schema === "boolean") {
+    return [];
+  }
 
-  const object = schema as Record<string, unknown>;
+  const schemaObject = schema as Record<string, unknown>;
   const tags: string[] = [];
-  if (typeof object["format"] === "string") tags.push(`@format ${object["format"]}`);
-  if (Object.hasOwn(object, "default")) tags.push(`@default ${JSON.stringify(object["default"])}`);
-  if (object["deprecated"] === true) tags.push("@deprecated");
+  if (typeof schemaObject["format"] === "string") {
+    tags.push(`@format ${schemaObject["format"]}`);
+  }
 
-  return buildDocs([object["description"]], tags);
+  if (Object.hasOwn(schemaObject, "default")) {
+    tags.push(`@default ${JSON.stringify(schemaObject["default"])}`);
+  }
+
+  if (schemaObject["deprecated"] === true) {
+    tags.push("@deprecated");
+  }
+
+  return buildDocs([schemaObject["description"]], tags);
 }
 
 /**
@@ -195,8 +183,10 @@ function schemaDocs(schema: unknown): string[] {
  */
 function validateKeywords(schema: Record<string, unknown>, pointer: string): void {
   for (const keyword of Object.keys(schema)) {
-    if (keyword.startsWith("x-") || TYPE_KEYWORDS.has(keyword) || ANNOTATION_KEYWORDS.has(keyword)) continue;
-    throw new Error(`Unsupported schema keyword ${JSON.stringify(keyword)} at ${pointer}/${keyword}`);
+    const isSupported = keyword.startsWith("x-") || TYPE_KEYWORDS.has(keyword) || ANNOTATION_KEYWORDS.has(keyword);
+    if (!isSupported) {
+      throw new Error(`Unsupported schema keyword ${JSON.stringify(keyword)} at ${pointer}/${keyword}`);
+    }
   }
 }
 
@@ -211,12 +201,12 @@ function validateKeywords(schema: Record<string, unknown>, pointer: string): voi
  */
 function convertReference(ref: unknown, modelNames: ModelNameMap, pointer: string): TypeNode {
   const isSchemaRef = typeof ref === "string" && ref.startsWith(SCHEMA_REF_PREFIX);
-  const identifier = isSchemaRef ? modelNames.get(ref.slice(SCHEMA_REF_PREFIX.length)) : undefined;
-  if (identifier === undefined) {
+  const typeName = isSchemaRef ? modelNames.get(ref.slice(SCHEMA_REF_PREFIX.length)) : undefined;
+  if (typeName === undefined) {
     throw new Error(`Reference ${JSON.stringify(ref)} does not match any schema at ${pointer}`);
   }
 
-  return reference(identifier);
+  return reference(typeName);
 }
 
 /**
@@ -269,30 +259,33 @@ function convertEnum(values: unknown, pointer: string): TypeNode {
  * @throws Error If the value is not a string, finite number, boolean, or null.
  */
 function convertLiteral(value: unknown, pointer: string): TypeNode {
-  if (value === null) return NULL;
-  if (typeof value === "string" || typeof value === "boolean") return literal(value);
-  if (typeof value === "number" && Number.isFinite(value)) return literal(value);
+  if (value === null) {
+    return NULL;
+  }
+
+  const isLiteral = typeof value === "string" || typeof value === "boolean";
+  const isFiniteNumber = typeof value === "number" && Number.isFinite(value);
+  if (isLiteral || isFiniteNumber) {
+    return literal(value);
+  }
+
   throw new Error(`Only string, number, boolean, and null values are supported at ${pointer}`);
 }
 
 /**
  * Convert the structural keywords of a schema, such as `type` and `properties`.
  *
- * When `type` is missing, the type is inferred from the other structural keywords.
- * A list of types, allowed in OpenAPI 3.1, produces a union.
+ * Each type allowed by the schema is converted separately, and the results are
+ * combined into a union.
  *
  * @param schema The schema to convert.
  * @param modelNames TypeScript type names for the schemas in `components.schemas`, keyed by schema name.
  * @param pointer Location of the schema.
  * @returns The TypeScript type described by the structural keywords.
- * @throws Error If a declared type is unsupported.
+ * @throws Error If no type is allowed or a declared type is unsupported.
  */
 function convertStructure(schema: Record<string, unknown>, modelNames: ModelNameMap, pointer: string): TypeNode {
-  const declared = schema["type"];
-  const types: readonly unknown[] = Array.isArray(declared)
-    ? declared
-    : declared === undefined ? inferTypes(schema) : [declared];
-
+  const types = readTypes(schema);
   if (types.length === 0) {
     throw new Error(`Expected at least one type at ${pointer}/type`);
   }
@@ -301,19 +294,36 @@ function convertStructure(schema: Record<string, unknown>, modelNames: ModelName
 }
 
 /**
- * Infer the types allowed by a schema that has structural keywords but no `type`.
+ * Return the JSON types allowed by a schema.
+ *
+ * A list of types, allowed in OpenAPI 3.1, is returned as is. When `type` is
+ * missing, the types are inferred from the other structural keywords: `array` if the
+ * schema defines `items`, and `object` if it defines any object keywords.
  *
  * @param schema The schema to inspect.
- * @returns `array` if the schema defines `items`, and `object` if it defines object keywords.
+ * @returns The allowed type names, which are not checked to be valid.
  */
-function inferTypes(schema: Record<string, unknown>): string[] {
-  const types: string[] = [];
-  if (Object.hasOwn(schema, "items")) types.push("array");
-  if (["additionalProperties", "properties", "required"].some((keyword) => Object.hasOwn(schema, keyword))) {
-    types.push("object");
+function readTypes(schema: Record<string, unknown>): readonly unknown[] {
+  const declared = schema["type"];
+  if (Array.isArray(declared)) {
+    return declared;
   }
 
-  return types;
+  if (declared !== undefined) {
+    return [declared];
+  }
+
+  // Infer the types from the keywords used by the schema
+  const inferred: string[] = [];
+  if (Object.hasOwn(schema, "items")) {
+    inferred.push("array");
+  }
+
+  if (OBJECT_KEYWORDS.some((keyword) => Object.hasOwn(schema, keyword))) {
+    inferred.push("object");
+  }
+
+  return inferred;
 }
 
 /**
@@ -356,7 +366,9 @@ function convertType(type: unknown, schema: Record<string, unknown>, modelNames:
  * @throws Error If `items` is a list of schemas, which describes a tuple.
  */
 function convertItems(schema: Record<string, unknown>, modelNames: ModelNameMap, pointer: string): TypeNode {
-  if (!Object.hasOwn(schema, "items")) return UNKNOWN;
+  if (!Object.hasOwn(schema, "items")) {
+    return UNKNOWN;
+  }
 
   const items = schema["items"];
   if (Array.isArray(items)) {
@@ -402,7 +414,9 @@ function convertObject(schema: Record<string, unknown>, modelNames: ModelNameMap
  * @throws Error If `required` is not an array of strings.
  */
 function readRequired(schema: Record<string, unknown>, pointer: string): Set<string> {
-  if (!Object.hasOwn(schema, "required")) return new Set();
+  if (!Object.hasOwn(schema, "required")) {
+    return new Set();
+  }
 
   const required = schema["required"];
   if (!Array.isArray(required) || !required.every((name) => typeof name === "string")) {
@@ -424,6 +438,7 @@ function readRequired(schema: Record<string, unknown>, pointer: string): Set<str
  * @param modelNames TypeScript type names for the schemas in `components.schemas`, keyed by schema name.
  * @param pointer Location of the schema.
  * @returns The index signature value type, or `null` if the object has no index signature.
+ * @throws Error If the `additionalProperties` schema cannot be converted.
  */
 function convertIndexType(
   schema: Record<string, unknown>,
@@ -431,12 +446,16 @@ function convertIndexType(
   modelNames: ModelNameMap,
   pointer: string,
 ): TypeNode | null {
-  if (!Object.hasOwn(schema, "additionalProperties")) return hasProperties ? null : UNKNOWN;
+  if (!Object.hasOwn(schema, "additionalProperties")) {
+    return hasProperties ? null : UNKNOWN;
+  }
 
-  const value = schema["additionalProperties"];
-  if (value === false) return hasProperties ? null : NEVER;
+  const additionalProperties = schema["additionalProperties"];
+  if (additionalProperties === false) {
+    return hasProperties ? null : NEVER;
+  }
 
-  const valueType = convertSchema(value, modelNames, `${pointer}/additionalProperties`);
+  const valueType = convertSchema(additionalProperties, modelNames, `${pointer}/additionalProperties`);
 
   // An index signature must accept the types of all declared properties, so a
   // specific value type can only be used when no properties are declared
@@ -452,7 +471,9 @@ function convertIndexType(
  * @throws Error If `nullable` is not a boolean.
  */
 function isNullable(schema: Record<string, unknown>, pointer: string): boolean {
-  if (!Object.hasOwn(schema, "nullable")) return false;
+  if (!Object.hasOwn(schema, "nullable")) {
+    return false;
+  }
 
   const nullable = schema["nullable"];
   if (typeof nullable !== "boolean") {

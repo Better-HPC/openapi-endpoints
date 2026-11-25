@@ -1,18 +1,10 @@
 /**
  * TypeScript syntax nodes for the generated module, and the printer that renders them.
  *
- * The conversion steps build these nodes rather than strings, so unions and
- * intersections can be flattened and deduplicated as they are built, and so
- * parentheses, indentation, and comments are handled in one place when the module is
- * printed. Declarations that rely on features the type nodes do not describe, such as
- * generic parameters and conditional types, carry fixed TypeScript source instead.
- * Nodes are plain objects and are never modified after they are created.
- *
- * Rendering is the only place source text is produced. The printer writes the header
- * comment, the section labels, and a declaration for every model and endpoint type.
- * Along the way it adds parentheses where operator precedence requires them, quotes
- * property names that are not valid identifiers, indents nested object types, and
- * escapes documentation text so it cannot terminate a comment early.
+ * The modules in `generation/` build these nodes instead of writing source text, and
+ * `renderModule` turns them into the final module. Keeping text output in one place
+ * means unions and intersections are simplified as they are built, and parentheses,
+ * indentation, property name quoting, and comment escaping are handled by the printer.
  */
 
 import type { OpenApiInfo } from "./openapi/parse.ts";
@@ -71,15 +63,20 @@ export interface SourceDeclarationNode {
 /** A named type exported by the generated module. */
 export type DeclarationNode = TypeDeclarationNode | SourceDeclarationNode;
 
-/** A TypeScript type expression. */
+/**
+ * A TypeScript type expression.
+ *
+ * Nodes are never modified after they are created, so the same node can be shared
+ * by several declarations.
+ */
 export type TypeNode =
-  | {readonly kind: "keyword"; readonly name: KeywordName}
-  | {readonly kind: "literal"; readonly value: LiteralValue}
-  | {readonly kind: "reference"; readonly name: string}
-  | {readonly kind: "array"; readonly element: TypeNode}
-  | {readonly kind: "union"; readonly members: readonly TypeNode[]}
-  | {readonly kind: "intersection"; readonly members: readonly TypeNode[]}
-  | {readonly kind: "object"; readonly properties: readonly PropertyNode[]; readonly indexType: TypeNode | null};
+  | { readonly kind: "keyword"; readonly name: KeywordName }
+  | { readonly kind: "literal"; readonly value: LiteralValue }
+  | { readonly kind: "reference"; readonly name: string }
+  | { readonly kind: "array"; readonly element: TypeNode }
+  | { readonly kind: "union"; readonly members: readonly TypeNode[] }
+  | { readonly kind: "intersection"; readonly members: readonly TypeNode[] }
+  | { readonly kind: "object"; readonly properties: readonly PropertyNode[]; readonly indexType: TypeNode | null };
 
 /** The `boolean` type. */
 export const BOOLEAN = keyword("boolean");
@@ -114,10 +111,10 @@ const ENDPOINTS_LABEL = "// Request and response types for each operation in `pa
 /** Indentation used for each nesting level of generated code. */
 const INDENT = "  ";
 
-/** Pattern matching property names that can be written without quotes. */
+/** Regex matching for property names that can be written without quotes. */
 const IDENTIFIER = /^[A-Za-z_$][A-Za-z0-9_$]*$/;
 
-/** Pattern matching canonical non-negative integers, which can be written as unquoted property names. */
+/** Regex matching for canonical non-negative integers, which can be written as unquoted property names. */
 const CANONICAL_INTEGER = /^(?:0|[1-9]\d*)$/;
 
 /**
@@ -209,15 +206,23 @@ export function sourceDeclaration(name: string, source: string, docs: readonly s
  * @returns The simplified union type node.
  */
 export function union(members: readonly TypeNode[]): TypeNode {
+  // Flatten nested unions and check for `unknown`, which absorbs every other member
   const flattened = members.flatMap((member) => member.kind === "union" ? member.members : [member]);
   if (flattened.some((member) => isKeyword(member, "unknown"))) {
     return UNKNOWN;
   }
 
+  // Remove members that do not change the union
   const unique = deduplicate(flattened.filter((member) => !isKeyword(member, "never")));
   const [first, ...rest] = unique;
-  if (first === undefined) return NEVER;
-  if (rest.length === 0) return first;
+  if (first === undefined) {
+    return NEVER;
+  }
+
+  if (rest.length === 0) {
+    return first;
+  }
+
   return {kind: "union", members: unique};
 }
 
@@ -232,15 +237,23 @@ export function union(members: readonly TypeNode[]): TypeNode {
  * @returns The simplified intersection type node.
  */
 export function intersection(members: readonly TypeNode[]): TypeNode {
+  // Flatten nested intersections and check for `never`, which absorbs every other member
   const flattened = members.flatMap((member) => member.kind === "intersection" ? member.members : [member]);
   if (flattened.some((member) => isKeyword(member, "never"))) {
     return NEVER;
   }
 
+  // Remove members that do not change the intersection
   const unique = deduplicate(flattened.filter((member) => !isKeyword(member, "unknown")));
   const [first, ...rest] = unique;
-  if (first === undefined) return UNKNOWN;
-  if (rest.length === 0) return first;
+  if (first === undefined) {
+    return UNKNOWN;
+  }
+
+  if (rest.length === 0) {
+    return first;
+  }
+
   return {kind: "intersection", members: unique};
 }
 
@@ -255,19 +268,28 @@ export function intersection(members: readonly TypeNode[]): TypeNode {
  * @returns The lines of the documentation comment.
  */
 export function buildDocs(texts: readonly unknown[], tags: readonly string[] = []): string[] {
+  // Collect each distinct, non-blank text as a block of lines
   const blocks: string[][] = [];
   const seen = new Set<string>();
   for (const text of texts) {
-    if (typeof text !== "string") continue;
+    if (typeof text !== "string") {
+      continue;
+    }
 
     const trimmed = text.trim();
-    if (trimmed === "" || seen.has(trimmed)) continue;
+    if (trimmed === "" || seen.has(trimmed)) {
+      continue;
+    }
 
     seen.add(trimmed);
     blocks.push(trimmed.split(/\r?\n/));
   }
 
-  if (tags.length > 0) blocks.push([...tags]);
+  if (tags.length > 0) {
+    blocks.push([...tags]);
+  }
+
+  // Join the blocks with a blank line between each one
   return blocks.flatMap((block, index) => index === 0 ? block : ["", ...block]);
 }
 
@@ -318,7 +340,7 @@ function printHeader(info: OpenApiInfo, sourceName: string): string {
 }
 
 /**
- * Render an exported declaration for a named type, preceded by its documentation comment.
+ * Render an exported declaration and its documentation comment.
  *
  * @param declaration The declaration to render.
  * @returns The TypeScript source for the declaration.
@@ -379,16 +401,19 @@ function printType(node: TypeNode, depth = 0): string {
  * @param depth The nesting level of the object type.
  * @returns The TypeScript source for the object type.
  */
-function printObject(node: Extract<TypeNode, {kind: "object"}>, depth: number): string {
+function printObject(node: Extract<TypeNode, { kind: "object" }>, depth: number): string {
   if (node.properties.length === 0) {
     return node.indexType ? `{ [key: string]: ${printType(node.indexType, depth)} }` : "{}";
   }
 
+  // Render each property on its own line, preceded by its documentation comment
   const indent = INDENT.repeat(depth + 1);
   const lines = ["{"];
   for (const property of node.properties) {
     const comment = printDocComment(property.docs, depth + 1);
-    if (comment) lines.push(comment);
+    if (comment) {
+      lines.push(comment);
+    }
 
     const name = printPropertyName(property.name) + (property.optional ? "?" : "");
     lines.push(`${indent}${name}: ${printType(property.type, depth + 1)};`);
@@ -398,6 +423,7 @@ function printObject(node: Extract<TypeNode, {kind: "object"}>, depth: number): 
     lines.push(`${indent}[key: string]: ${printType(node.indexType, depth + 1)};`);
   }
 
+  // Close the object at the indentation of the enclosing type
   lines.push(`${INDENT.repeat(depth)}}`);
   return lines.join("\n");
 }
@@ -445,12 +471,19 @@ function printPropertyName(name: string): string {
  * @returns The TypeScript source for the comment, or an empty string if there are no lines.
  */
 function printDocComment(lines: readonly string[], depth = 0): string {
+  // Escape comment terminators and remove surrounding blank lines
   const cleaned = trimBlankLines(lines.map((line) => line.replaceAll("*/", "*\\/").trimEnd()));
   const indent = INDENT.repeat(depth);
   const [first, ...rest] = cleaned;
-  if (first === undefined) return "";
-  if (rest.length === 0) return `${indent}/** ${first} */`;
+  if (first === undefined) {
+    return "";
+  }
 
+  if (rest.length === 0) {
+    return `${indent}/** ${first} */`;
+  }
+
+  // Write multi-line comments with a leading asterisk on each line
   const body = cleaned.map((line) => line ? `${indent} * ${line}` : `${indent} *`);
   return [`${indent}/**`, ...body, `${indent} */`].join("\n");
 }
@@ -463,7 +496,9 @@ function printDocComment(lines: readonly string[], depth = 0): string {
  */
 function trimBlankLines(lines: readonly string[]): string[] {
   const start = lines.findIndex((line) => line !== "");
-  if (start === -1) return [];
+  if (start === -1) {
+    return [];
+  }
 
   const end = lines.findLastIndex((line) => line !== "");
   return lines.slice(start, end + 1);
@@ -500,7 +535,10 @@ function deduplicate(nodes: readonly TypeNode[]): TypeNode[] {
   const seen = new Set<string>();
   return nodes.filter((node) => {
     const key = JSON.stringify(node);
-    if (seen.has(key)) return false;
+    if (seen.has(key)) {
+      return false;
+    }
+
     seen.add(key);
     return true;
   });

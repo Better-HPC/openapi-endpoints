@@ -13,10 +13,10 @@ import { dirname } from "node:path";
 /** Streams the command line interface writes output and messages to. */
 export interface OutputStreams {
   /** Destination for generated code and status messages. */
-  readonly stdout: {write(text: string): unknown};
+  readonly stdout: { write(text: string): unknown };
 
   /** Destination for error messages. */
-  readonly stderr: {write(text: string): unknown};
+  readonly stderr: { write(text: string): unknown };
 }
 
 /**

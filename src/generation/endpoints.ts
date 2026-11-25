@@ -1,41 +1,7 @@
-/**
- * Endpoint map and helper type declarations built from the operations in `paths`.
- *
- * Every path in the document becomes a property of the generated `Endpoints`
- * interface, with one entry per HTTP method. Each entry describes the operation's
- * path parameters, query parameters, JSON request body, and JSON responses. Header
- * and cookie parameters are not included, and content types other than JSON are
- * described as `unknown`.
- *
- * References to reusable parameters, request bodies, and responses are followed as
- * they are read, so a problem inside a shared component is reported at the component
- * rather than at every operation that uses it. As in the models step, the structure
- * of the document is trusted, and error locations are paths from the document root
- * with property names written unescaped.
- *
- * The endpoint map is followed by helper types for looking up parts of it, such as
- * the response body for a path and HTTP method. The helpers rely on mapped and
- * conditional types that the type nodes do not describe, so they are declared as
- * fixed source. The names of the map and the helpers are reserved, and the naming
- * step rejects schemas whose model type would conflict with them.
- */
+/** Derivation of request and response TypeScript types from OpenAPI operations. */
 
-import {
-  buildDocs,
-  declaration,
-  type DeclarationNode,
-  NEVER,
-  objectOf,
-  property,
-  type PropertyNode,
-  sourceDeclaration,
-  type SourceDeclarationNode,
-  type TypeNode,
-  union,
-  UNKNOWN,
-  VOID,
-} from "../render.ts";
 import type { ComponentSection, OpenApiDocument } from "../openapi/parse.ts";
+import { buildDocs, declaration, type DeclarationNode, NEVER, objectOf, property, type PropertyNode, sourceDeclaration, type SourceDeclarationNode, type TypeNode, union, UNKNOWN, VOID, } from "../render.ts";
 import { convertSchema } from "./models.ts";
 import type { ModelNameMap } from "./naming.ts";
 
@@ -53,13 +19,18 @@ const ENDPOINTS_DOCS = [
   "successful JSON response, and JSON responses keyed by status. Missing parts are `never`.",
 ];
 
-/** Pattern matching response status keys for successful responses, such as `200` or `2XX`. */
+/** Regex matching for the status keys of successful responses, such as `200` or `2XX`. */
 const SUCCESS_STATUS = /^2(?:\d\d|XX)$/i;
 
-/** Pattern matching response status keys for a range of status codes, such as `4XX`. */
+/** Regex matching for status keys covering a range of status codes, such as `4XX`. */
 const STATUS_RANGE = /^[1-5]XX$/i;
 
-/** Helper types declared after the endpoint map. */
+/**
+ * Helper types declared after the endpoint map.
+ *
+ * The helpers rely on generic parameters and conditional types, which type nodes
+ * cannot describe, so they are declared as fixed TypeScript source.
+ */
 const HELPER_DECLARATIONS: readonly SourceDeclarationNode[] = [
   sourceDeclaration(
     "HttpMethod",
@@ -109,7 +80,7 @@ const HELPER_DECLARATIONS: readonly SourceDeclarationNode[] = [
   ),
 ];
 
-/** Names of the types declared by this step, which model types cannot use. */
+/** Names of the types declared by this module, which `deriveModelNames` rejects as model type names. */
 export const ENDPOINT_TYPE_NAMES: ReadonlySet<string> = new Set([
   ENDPOINTS_NAME,
   ...HELPER_DECLARATIONS.map((helper) => helper.name),
@@ -117,14 +88,14 @@ export const ENDPOINT_TYPE_NAMES: ReadonlySet<string> = new Set([
 
 /** Shared state used while converting the operations in a document. */
 interface EndpointContext {
-  /** The document being converted. */
-  readonly document: OpenApiDocument;
+  /** The parsed OpenAPI specification. */
+  readonly openApiSpec: OpenApiDocument;
 
   /** TypeScript type names for the schemas in `components.schemas`, keyed by schema name. */
   readonly modelNames: ModelNameMap;
 }
 
-/** A section of `components` whose objects are found by following references, rather than declared as named types. */
+/** A property of the OpenAPI `components` field whose objects are found by following references. */
 type ResolvedSection = Exclude<ComponentSection, "schemas">;
 
 /** A document object with any references to other components resolved. */
@@ -152,16 +123,19 @@ interface Parameter {
 }
 
 /**
- * Convert every operation in the document into the `Endpoints` map, followed by its helper types.
+ * Convert the operations in an OpenAPI specification into endpoint declarations.
  *
- * @param document The document being converted.
+ * The `Endpoints` map has one property per path, sorted by path, and is followed by
+ * the helper types in `HELPER_DECLARATIONS`.
+ *
+ * @param openApiSpec The parsed OpenAPI specification.
  * @param modelNames TypeScript type names for the schemas in `components.schemas`, keyed by schema name.
- * @returns The `Endpoints` declaration, with one property per path sorted by path, then the helper declarations.
+ * @returns The `Endpoints` declaration followed by the helper declarations.
  * @throws Error If a path, operation, or schema cannot be converted.
  */
-export function deriveEndpoints(document: OpenApiDocument, modelNames: ModelNameMap): DeclarationNode[] {
-  const context: EndpointContext = {document, modelNames};
-  const paths = document.paths ?? {};
+export function deriveEndpoints(openApiSpec: OpenApiDocument, modelNames: ModelNameMap): DeclarationNode[] {
+  const context: EndpointContext = {openApiSpec, modelNames};
+  const paths = openApiSpec.paths ?? {};
   const properties = Object.keys(paths).sort().map((path) => {
     return property(path, convertPathItem(paths[path], context, `#/paths/${path}`));
   });
@@ -179,18 +153,18 @@ export function deriveEndpoints(document: OpenApiDocument, modelNames: ModelName
  * @throws Error If the path item is a reference or an operation cannot be converted.
  */
 function convertPathItem(value: unknown, context: EndpointContext, pointer: string): TypeNode {
-  const item = value as Record<string, unknown>;
-  if (Object.hasOwn(item, "$ref")) {
+  const pathItem = value as Record<string, unknown>;
+  if (Object.hasOwn(pathItem, "$ref")) {
     throw new Error(`Path item references are not supported at ${pointer}/$ref`);
   }
 
-  const sharedParameters = readParameters(item, context, pointer);
-  const methods = HTTP_METHODS.filter((method) => Object.hasOwn(item, method)).map((method) => {
-    const location = `${pointer}/${method}`;
-    const operation = item[method] as Record<string, unknown>;
+  const sharedParameters = readParameters(pathItem, context, pointer);
+  const methods = HTTP_METHODS.filter((method) => Object.hasOwn(pathItem, method)).map((method) => {
+    const operationPointer = `${pointer}/${method}`;
+    const operation = pathItem[method] as Record<string, unknown>;
     return property(
       method,
-      convertOperation(operation, sharedParameters, context, location),
+      convertOperation(operation, sharedParameters, context, operationPointer),
       false,
       operationDocs(operation),
     );
@@ -248,15 +222,19 @@ function operationDocs(operation: Record<string, unknown>): string[] {
  * @throws Error If the parameter list or a parameter is malformed.
  */
 function readParameters(owner: Record<string, unknown>, context: EndpointContext, pointer: string): Parameter[] {
-  if (!Object.hasOwn(owner, "parameters")) return [];
+  if (!Object.hasOwn(owner, "parameters")) {
+    return [];
+  }
 
+  // Confirm the parameters are listed in an array
   const listPointer = `${pointer}/parameters`;
-  const list = owner["parameters"];
-  if (!Array.isArray(list)) {
+  const parameterList = owner["parameters"];
+  if (!Array.isArray(parameterList)) {
     throw new Error(`Expected an array of parameters at ${listPointer}`);
   }
 
-  return list.map((entry, index) => {
+  // Resolve each parameter and confirm it has a name and location
+  return parameterList.map((entry, index) => {
     const resolved = resolveObject(entry, "parameters", context, `${listPointer}/${index}`);
     const name = resolved.value["name"];
     const location = resolved.value["in"];
@@ -269,9 +247,10 @@ function readParameters(owner: Record<string, unknown>, context: EndpointContext
 }
 
 /**
- * Combine path item and operation parameters, letting operation parameters override shared ones.
+ * Combine the parameters of a path item and one of its operations.
  *
- * Parameters are matched by name and location, as described by the OpenAPI specification.
+ * Parameters are matched by name and location, as described by the OpenAPI
+ * specification, and an operation parameter replaces a matching path item parameter.
  *
  * @param shared Parameters defined on the path item.
  * @param own Parameters defined on the operation.
@@ -334,10 +313,12 @@ function convertParameterType(parameter: Parameter, context: EndpointContext): T
   // Parameters may describe their value with a single media type instead of a schema
   const contentPointer = `${pointer}/content`;
   const content = (definition["content"] ?? {}) as Record<string, unknown>;
-  const [entry] = Object.entries(content);
-  if (entry === undefined) return UNKNOWN;
+  const [mediaEntry] = Object.entries(content);
+  if (mediaEntry === undefined) {
+    return UNKNOWN;
+  }
 
-  const [mediaType, media] = entry;
+  const [mediaType, media] = mediaEntry;
   const mediaPointer = `${contentPointer}/${mediaType}`;
   const mediaObject = media as Record<string, unknown>;
   return Object.hasOwn(mediaObject, "schema")
@@ -355,7 +336,9 @@ function convertParameterType(parameter: Parameter, context: EndpointContext): T
  * @throws Error If the request body cannot be converted.
  */
 function convertRequestBody(operation: Record<string, unknown>, context: EndpointContext, pointer: string): TypeNode {
-  if (!Object.hasOwn(operation, "requestBody")) return NEVER;
+  if (!Object.hasOwn(operation, "requestBody")) {
+    return NEVER;
+  }
 
   const body = resolveObject(operation["requestBody"], "requestBodies", context, `${pointer}/requestBody`);
   return convertJsonContent(body.value, context, body.pointer) ?? NEVER;
@@ -390,15 +373,21 @@ function convertResponses(operation: Record<string, unknown>, context: EndpointC
 /**
  * Convert the content of a response into the type of its body.
  *
+ * Responses without content have no body and are typed as `void`. Responses whose
+ * content has no JSON media types are typed as `unknown`.
+ *
  * @param response The response object.
  * @param context Shared state for the document being converted.
  * @param pointer Location of the response.
- * @returns The JSON body type, `void` if the response has no body, or `unknown` for other content types.
+ * @returns The response body type.
  * @throws Error If the response content cannot be converted.
  */
 function convertResponseBody(response: Record<string, unknown>, context: EndpointContext, pointer: string): TypeNode {
   const content = (response["content"] ?? {}) as Record<string, unknown>;
-  if (Object.keys(content).length === 0) return VOID;
+  if (Object.keys(content).length === 0) {
+    return VOID;
+  }
+
   return convertJsonContent(response, context, pointer) ?? UNKNOWN;
 }
 
@@ -429,14 +418,18 @@ function convertJsonContent(owner: Record<string, unknown>, context: EndpointCon
 }
 
 /**
- * Return a parameter, request body, or response object, following `$ref` values until a concrete object is found.
+ * Return a parameter, request body, or response object with references resolved.
+ *
+ * References are followed until an object without a `$ref` is found. Because the
+ * resolved location is returned, a problem inside a shared component is reported at
+ * the component rather than at every operation that uses it.
  *
  * @param value The object, which may be a reference object.
- * @param section The components section references must point into.
+ * @param section The property of `components` that references must point into.
  * @param context Shared state for the document being converted.
  * @param pointer Location of the object.
  * @returns The resolved object and its location.
- * @throws Error If a reference does not match a component in the section, or is circular.
+ * @throws Error If a reference does not match a component in `section`, or is circular.
  */
 function resolveObject(
   value: unknown,
@@ -444,37 +437,43 @@ function resolveObject(
   context: EndpointContext,
   pointer: string,
 ): ResolvedObject {
-  const entries = context.document.components?.[section] ?? {};
+  const components = context.openApiSpec.components?.[section] ?? {};
   const prefix = `#/components/${section}/`;
   const visited = new Set<string>();
 
-  let current = value as Record<string, unknown>;
-  let location = pointer;
-  while (Object.hasOwn(current, "$ref")) {
-    const ref = current["$ref"];
-    const refPointer = `${location}/$ref`;
+  let currentObject = value as Record<string, unknown>;
+  let currentPointer = pointer;
+  while (Object.hasOwn(currentObject, "$ref")) {
+    // Confirm the reference points to an existing component
+    const ref = currentObject["$ref"];
+    const refPointer = `${currentPointer}/$ref`;
     const name = typeof ref === "string" && ref.startsWith(prefix) ? ref.slice(prefix.length) : undefined;
-    if (name === undefined || !Object.hasOwn(entries, name)) {
+    if (name === undefined || !Object.hasOwn(components, name)) {
       throw new Error(`Reference ${JSON.stringify(ref)} does not match any component in \`components.${section}\` at ${refPointer}`);
     }
 
+    // Stop before following a reference that has already been visited
     if (visited.has(name)) {
       throw new Error(`Circular reference to ${JSON.stringify(ref)} at ${refPointer}`);
     }
 
+    // Move to the referenced component
     visited.add(name);
-    location = `#/components/${section}/${name}`;
-    current = entries[name] as Record<string, unknown>;
+    currentPointer = `#/components/${section}/${name}`;
+    currentObject = components[name] as Record<string, unknown>;
   }
 
-  return {value: current, pointer: location};
+  return {value: currentObject, pointer: currentPointer};
 }
 
 /**
  * Return the type of a successful response to an operation.
  *
+ * The type is the union of all `2xx` responses. If there are none, the default
+ * response is used, and if that is missing too, the type is `unknown`.
+ *
  * @param responses The operation's responses, keyed by status.
- * @returns The union of all `2xx` responses, the default response if there are none, or `unknown`.
+ * @returns The successful response type.
  */
 function successResponse(responses: readonly PropertyNode[]): TypeNode {
   const successes = responses.filter((response) => SUCCESS_STATUS.test(response.name));
@@ -492,8 +491,8 @@ function successResponse(responses: readonly PropertyNode[]): TypeNode {
  * @returns Whether the media type is `application/json` or uses the `+json` structured syntax suffix.
  */
 function isJsonMediaType(mediaType: string): boolean {
-  const base = (mediaType.split(";")[0] ?? "").trim().toLowerCase();
-  return base === "application/json" || base.endsWith("+json");
+  const baseType = (mediaType.split(";")[0] ?? "").trim().toLowerCase();
+  return baseType === "application/json" || baseType.endsWith("+json");
 }
 
 /**
@@ -504,18 +503,38 @@ function isJsonMediaType(mediaType: string): boolean {
  * @returns A negative number, zero, or a positive number, as expected by `Array.prototype.sort`.
  */
 function compareStatuses(left: string, right: string): number {
-  return statusRank(left) - statusRank(right) || (left < right ? -1 : left > right ? 1 : 0);
+  const rankDifference = statusRank(left) - statusRank(right);
+  if (rankDifference !== 0) {
+    return rankDifference;
+  }
+
+  // Keys with the same rank, such as `4XX` and `4xx`, are ordered by their text
+  if (left === right) {
+    return 0;
+  }
+
+  return left < right ? -1 : 1;
 }
 
 /**
  * Return a sort rank for a response status key.
  *
+ * Status codes rank by their number, and ranges such as `4XX` rank just after the
+ * last code in the range. The `default` response ranks after every status, and any
+ * other key ranks last.
+ *
  * @param status The status key, such as `200`, `4XX`, or `default`.
- * @returns The numeric status for codes, the end of the range for ranges, and a large value otherwise.
+ * @returns The sort rank of the status key.
  */
 function statusRank(status: string): number {
-  if (/^\d{3}$/.test(status)) return Number(status);
-  if (STATUS_RANGE.test(status)) return Number(status.charAt(0)) * 100 + 99.5;
+  if (/^\d{3}$/.test(status)) {
+    return Number(status);
+  }
+
+  if (STATUS_RANGE.test(status)) {
+    return Number(status.charAt(0)) * 100 + 99.5;
+  }
+
   return status === "default" ? 1000 : 1001;
 }
 

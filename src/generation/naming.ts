@@ -6,10 +6,10 @@ import { ENDPOINT_TYPE_NAMES } from "./endpoints.ts";
 /** Maps OpenAPI schema names to TypeScript names. */
 export type ModelNameMap = ReadonlyMap<string, string>;
 
-/** Pattern matching for valid TypeScript identifiers. */
+/** Regex matching for valid TypeScript identifiers. */
 const IDENTIFIER = /^[A-Za-z_$][A-Za-z0-9_$]*$/;
 
-/** Pattern matching invalid characters in TypeScript identifiers. */
+/** Regex matching for characters that cannot appear in TypeScript identifiers. */
 const NON_IDENTIFIER_CHARACTERS = /[^A-Za-z0-9_$]+/;
 
 /** Reserved names that cannot be used for TypeScript types and interfaces. */
@@ -28,9 +28,10 @@ const RESERVED_TYPE_NAMES: ReadonlySet<string> = new Set([
 /**
  * Derive a valid TypeScript type name for every schema in an OpenAPI specification.
  *
- * Schemas are read from the `components.schemas` section of the specification.
- * An error is thrown if any generated name results in a duplicate or conflicts
- * with builtin types or the names declared by the endpoints step.
+ * Schemas are read from the `components.schemas` field of the specification. An
+ * error is thrown if two schemas produce the same type name, or if a type name
+ * conflicts with a TypeScript keyword, a built-in type, or one of the types declared
+ * by `generation/endpoints.ts`.
  *
  * @param openApiSpec The parsed OpenAPI specification.
  * @returns A mapping from schema name to type name.
@@ -78,14 +79,17 @@ export function deriveModelNames(openApiSpec: OpenApiDocument): ModelNameMap {
  * @throws Error If the name contains no characters usable in an identifier.
  */
 function toIdentifier(name: string, pointer: string): string {
-  if (IDENTIFIER.test(name)) return name;
+  if (IDENTIFIER.test(name)) {
+    return name;
+  }
 
-  // Convert identifiers with invalid characters to pascal case
+  // Convert names with invalid characters to PascalCase
   const identifier = name
     .split(NON_IDENTIFIER_CHARACTERS)
     .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
     .join("");
 
+  // Confirm the name contained at least one usable character
   if (identifier === "") {
     throw new Error(`Schema name ${JSON.stringify(name)} cannot be converted to a type name at ${pointer}`);
   }
