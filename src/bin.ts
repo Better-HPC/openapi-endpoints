@@ -1,4 +1,5 @@
-/** The primary application entrypint when executed from the command line. */
+#!/usr/bin/env node
+/** The primary application entrypoint when executed from the command line. */
 
 import { main } from "./main.ts";
 
