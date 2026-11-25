@@ -60,6 +60,4 @@ export async function main(args: readonly string[], streams: OutputStreams = pro
   }
 }
 
-void main(process.argv.slice(2)).then((exitCode) => {
-  process.exitCode = exitCode;
-});
+

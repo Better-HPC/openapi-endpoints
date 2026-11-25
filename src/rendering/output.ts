@@ -57,9 +57,6 @@ export function checkOutput(code: string, path: string, streams: OutputStreams):
 /**
  * Report an error thrown anywhere in the command.
  *
- * Every error the command prints goes through here, except argument errors, which
- * commander prints itself.
- *
  * @param error The thrown value.
  * @param streams Streams for output and messages.
  */
