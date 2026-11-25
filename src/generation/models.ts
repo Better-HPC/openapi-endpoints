@@ -1,8 +1,26 @@
-/** Derivation of dynamic TypeScript types from OpenAPI schemas. */
+/** Model type declarations for the schemas in `components.schemas`. */
 
 import type { OpenApiDocument } from "../openapi/parse.ts";
-import { arrayOf, BOOLEAN, buildDocs, declaration, type DeclarationNode, intersection, literal, NEVER, NULL, NUMBER, objectOf, property, reference, STRING, type TypeNode, union, UNKNOWN, } from "../render.ts";
 import type { ModelNameMap } from "./naming.ts";
+import {
+  arrayOf,
+  BOOLEAN,
+  buildDocs,
+  declaration,
+  type DeclarationNode,
+  intersection,
+  literal,
+  NEVER,
+  NULL,
+  NUMBER,
+  objectOf,
+  property,
+  reference,
+  STRING,
+  type TypeNode,
+  union,
+  UNKNOWN,
+} from "./utils.ts";
 
 /** Prefix of a `$ref` value that points to a schema in `components.schemas`. */
 const SCHEMA_REF_PREFIX = "#/components/schemas/";
@@ -89,7 +107,8 @@ export function deriveModels(openApiSpec: OpenApiDocument, modelNames: ModelName
  * intersections, `oneOf` and `anyOf` unions, and either the enumerated values or
  * the declared structure. The parts are intersected, and `nullable` adds `null`.
  * The schema is assumed to be structurally valid OpenAPI, so only the keywords that
- * affect the generated type are checked.
+ * affect the generated type are checked. This function is also used by
+ * `generation/endpoints.ts` for schemas inside operations.
  *
  * @param schema The schema to convert, which may be a boolean schema in OpenAPI 3.1.
  * @param modelNames TypeScript type names for the schemas in `components.schemas`, keyed by schema name.
@@ -175,7 +194,8 @@ function schemaDocs(schema: unknown): string[] {
 /**
  * Confirm a schema only uses keywords the converter understands.
  *
- * Vendor extensions starting with `x-` are always allowed.
+ * Unsupported keywords throw an error instead of being ignored, so the generated types
+ * are never silently wrong. Vendor extensions starting with `x-` are always allowed.
  *
  * @param schema The schema to check.
  * @param pointer Location of the schema.
@@ -313,7 +333,6 @@ function readTypes(schema: Record<string, unknown>): readonly unknown[] {
     return [declared];
   }
 
-  // Infer the types from the keywords used by the schema
   const inferred: string[] = [];
   if (Object.hasOwn(schema, "items")) {
     inferred.push("array");

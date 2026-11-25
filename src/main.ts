@@ -13,8 +13,8 @@ import { deriveModels } from "./generation/models.ts";
 import { deriveModelNames } from "./generation/naming.ts";
 import { parseOpenApiText } from "./openapi/parse.ts";
 import { readOpenApiSource } from "./openapi/read.ts";
-import { checkOutput, type OutputStreams, reportError, writeOutput } from "./output.ts";
-import { renderModule } from "./render.ts";
+import { checkOutput, type OutputStreams, reportError, writeOutput } from "./rendering/output.ts";
+import { renderModule } from "./rendering/render.ts";
 
 /** Exit code for a successful run. */
 const EXIT_SUCCESS = 0;

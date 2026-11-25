@@ -1,11 +1,4 @@
-/**
- * Delivery of generated code and messages to the user.
- *
- * Generated code is written to standard output, written to a file, or compared with
- * an existing file to confirm it is up to date. Errors raised by any step are reported
- * here as well, so apart from the messages commander prints while parsing arguments,
- * every message the command prints comes from this module.
- */
+/** Delivery of generated code and messages to the user. */
 
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname } from "node:path";
@@ -13,10 +6,10 @@ import { dirname } from "node:path";
 /** Streams the command line interface writes output and messages to. */
 export interface OutputStreams {
   /** Destination for generated code and status messages. */
-  readonly stdout: { write(text: string): unknown };
+  readonly stdout: {write(text: string): unknown};
 
   /** Destination for error messages. */
-  readonly stderr: { write(text: string): unknown };
+  readonly stderr: {write(text: string): unknown};
 }
 
 /**
@@ -27,6 +20,7 @@ export interface OutputStreams {
  * @param code The generated code.
  * @param path The output file path, or `undefined` to write to standard output.
  * @param streams Streams for output and messages.
+ * @throws Error If the file or its parent directories cannot be written.
  */
 export function writeOutput(code: string, path: string | undefined, streams: OutputStreams): void {
   if (path === undefined) {
@@ -46,21 +40,25 @@ export function writeOutput(code: string, path: string | undefined, streams: Out
  * @param path The output file path.
  * @param streams Streams for output and messages.
  * @returns Whether the file exists and matches the generated code.
+ * @throws Error If the file exists but cannot be read.
  */
 export function checkOutput(code: string, path: string, streams: OutputStreams): boolean {
-  const existing = readOptionalFile(path);
-  if (existing === code) {
+  const existingCode = readOptionalFile(path);
+  if (existingCode === code) {
     streams.stdout.write(`${path} is up to date\n`);
     return true;
   }
 
-  const problem = existing === undefined ? "does not exist" : "is out of date";
+  const problem = existingCode === undefined ? "does not exist" : "is out of date";
   streams.stderr.write(`error: ${path} ${problem}. Run the command without --check to regenerate it.\n`);
   return false;
 }
 
 /**
- * Report an error raised by any step of the command.
+ * Report an error thrown anywhere in the command.
+ *
+ * Every error the command prints goes through here, except argument errors, which
+ * commander prints itself.
  *
  * @param error The thrown value.
  * @param streams Streams for output and messages.
@@ -75,12 +73,16 @@ export function reportError(error: unknown, streams: OutputStreams): void {
  *
  * @param path The file path.
  * @returns The file contents, or `undefined` if the file does not exist.
+ * @throws Error If the file exists but cannot be read.
  */
 function readOptionalFile(path: string): string | undefined {
   try {
     return readFileSync(path, "utf8");
   } catch (error) {
-    if (error instanceof Error && "code" in error && error.code === "ENOENT") return undefined;
+    if (error instanceof Error && "code" in error && error.code === "ENOENT") {
+      return undefined;
+    }
+
     throw error;
   }
 }

@@ -1,9 +1,23 @@
-/** Derivation of request and response TypeScript types from OpenAPI operations. */
+/** Endpoint map and helper type declarations for the operations in `paths`. */
 
 import type { ComponentSection, OpenApiDocument } from "../openapi/parse.ts";
-import { buildDocs, declaration, type DeclarationNode, NEVER, objectOf, property, type PropertyNode, sourceDeclaration, type SourceDeclarationNode, type TypeNode, union, UNKNOWN, VOID, } from "../render.ts";
 import { convertSchema } from "./models.ts";
 import type { ModelNameMap } from "./naming.ts";
+import {
+  buildDocs,
+  declaration,
+  type DeclarationNode,
+  NEVER,
+  objectOf,
+  property,
+  type PropertyNode,
+  sourceDeclaration,
+  type SourceDeclarationNode,
+  type TypeNode,
+  union,
+  UNKNOWN,
+  VOID,
+} from "./utils.ts";
 
 /** Name of the declared endpoint map. */
 const ENDPOINTS_NAME = "Endpoints";
@@ -176,6 +190,8 @@ function convertPathItem(value: unknown, context: EndpointContext, pointer: stri
 /**
  * Convert an operation into an object type describing its requests and responses.
  *
+ * Only path and query parameters are included. Header and cookie parameters are skipped.
+ *
  * @param operation The operation object.
  * @param sharedParameters Parameters defined on the path item, which apply to every operation.
  * @param context Shared state for the document being converted.
@@ -226,7 +242,6 @@ function readParameters(owner: Record<string, unknown>, context: EndpointContext
     return [];
   }
 
-  // Confirm the parameters are listed in an array
   const listPointer = `${pointer}/parameters`;
   const parameterList = owner["parameters"];
   if (!Array.isArray(parameterList)) {
@@ -452,12 +467,11 @@ function resolveObject(
       throw new Error(`Reference ${JSON.stringify(ref)} does not match any component in \`components.${section}\` at ${refPointer}`);
     }
 
-    // Stop before following a reference that has already been visited
+    // Guard against references that loop back on themselves
     if (visited.has(name)) {
       throw new Error(`Circular reference to ${JSON.stringify(ref)} at ${refPointer}`);
     }
 
-    // Move to the referenced component
     visited.add(name);
     currentPointer = `#/components/${section}/${name}`;
     currentObject = components[name] as Record<string, unknown>;
