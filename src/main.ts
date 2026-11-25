@@ -27,14 +27,14 @@ const EXIT_FAILURE = 1;
  *
  * @param args The application command line arguments, excluding the executable and script paths.
  * @param streams Input/Output streams for generated code and messages.
- * @returns The process exit code.
+ * @returns A promise for the process exit code.
  */
-export function main(args: readonly string[], streams: OutputStreams = process): number {
+export async function main(args: readonly string[], streams: OutputStreams = process): Promise<number> {
   const parsedArgs = parseArguments(args);
 
   try {
     // Fetch and parse the openapi specification
-    const openApiSource = readOpenApiSource(parsedArgs.schema);
+    const openApiSource = await readOpenApiSource(parsedArgs.schema);
     const openApiSpec = parseOpenApiText(openApiSource.text);
 
     // Derive TypeScript interfaces
@@ -60,4 +60,6 @@ export function main(args: readonly string[], streams: OutputStreams = process):
   }
 }
 
-process.exitCode = main(process.argv.slice(2));
+void main(process.argv.slice(2)).then((exitCode) => {
+  process.exitCode = exitCode;
+});

@@ -2,13 +2,13 @@
 
 import { parse } from "yaml";
 
-/** Regex matching the supported OpenAPI versions. */
+/** Regex matching for supported OpenAPI versions. */
 const SUPPORTED_VERSION = /^3\.[01](?:\.\d+)?$/;
 
-/** Sections of `components` read by the conversion steps, in alphabetical order. */
+/** Properties of the OpenAPI `components` field used by this package. */
 const COMPONENT_SECTIONS = ["parameters", "requestBodies", "responses", "schemas"] as const;
 
-/** A section of `components` read by the conversion steps. */
+/** A property of the OpenAPI `components` field used by this package. */
 export type ComponentSection = (typeof COMPONENT_SECTIONS)[number];
 
 /** Metadata about the API described by an OpenAPI document. */
@@ -41,7 +41,7 @@ export interface OpenApiComponents {
   readonly [key: string]: unknown;
 }
 
-/** A parsed OpenAPI 3.0 or 3.1 document. */
+/** A parsed OpenAPI document. */
 export interface OpenApiDocument {
   /** The version of the OpenAPI specification used by the document. */
   readonly openapi: string;
@@ -94,7 +94,7 @@ export function parseOpenApiText(text: string): OpenApiDocument {
 }
 
 /**
- * Confirm a file parsing result is a valid OpenAPI document with a supported version.
+ * Confirm a parsed file is a valid OpenAPI specification with a supported version.
  *
  * The following properties are checked:
  *
@@ -140,12 +140,16 @@ function validateDocument(value: unknown): OpenApiDocument {
 }
 
 /**
- * Return a value as a plain object, or raise an error pointing to its location.
+ * Return a value cast as a key/value object.
+ *
+ * Returns the value unchanged if it is an object other than an array or `null`.
+ * Otherwise, throws an error that includes the location of the value in its
+ * parent OpenAPI document.
  *
  * @param value The value to check.
  * @param pointer Location of the value in the document.
- * @returns The value, typed as a plain object.
- * @throws Error If the value is not an object other than an array or `null`.
+ * @returns The value, typed as a key/value object.
+ * @throws Error If the value is an array, `null`, or not an object.
  */
 function expectRecord(value: unknown, pointer: string): Record<string, unknown> {
   if (typeof value !== "object" || value === null || Array.isArray(value)) {
@@ -156,13 +160,17 @@ function expectRecord(value: unknown, pointer: string): Record<string, unknown> 
 }
 
 /**
- * Return an object property that must be an object if present, or an empty object if it is missing.
+ * Return an optional property cast as a key/value object.
+ *
+ * Returns an empty object if the property is missing, so callers can iterate
+ * over the result without checking for its absence. If the property is
+ * present, it is checked the same way as in `expectRecord`.
  *
  * @param parent The object containing the property.
  * @param key The property name.
  * @param pointer Location of the parent object in the document.
- * @returns The property value, or an empty object.
- * @throws Error If the property is present but is not a plain object.
+ * @returns The property value, or an empty object if the property is missing.
+ * @throws Error If the property is present but is not a key/value object.
  */
 function optionalRecord(parent: Record<string, unknown>, key: string, pointer: string): Record<string, unknown> {
   return Object.hasOwn(parent, key) ? expectRecord(parent[key], `${pointer}/${key}`) : {};

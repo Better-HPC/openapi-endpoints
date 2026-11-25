@@ -24,7 +24,7 @@ export function parseArguments(args: readonly string[]): ParsingResult {
     .description("Generate TypeScript model types from an OpenAPI specification.")
     .helpOption("-h, --help", "Show the application help text")
     .version(pkg.version, "-v, --version", "Show the application version number")
-    .argument("<schema>", "Path of an OpenAPI specification in YAML or JSON format")
+    .argument("<schema>", "Path or URL of an OpenAPI specification in YAML or JSON format")
     .option("-o, --output <file>", "Write the generated module to a file instead of STDOUT")
     .option("--check", "Exit with an error if the output file is missing or out of date")
     .parse([...args], {from: "user"});
